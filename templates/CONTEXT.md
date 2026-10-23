@@ -80,5 +80,3 @@ _Avoid_: report, changelog
 
 > **Owner:** "I just dumped a link to that podcast plus 'loved the bit on sleep, disagree on caffeine'."
 > **Dev:** "So one **Dump**. Later a **Recall** question like 'what do I think about caffeine?' should surface that disagreement, and a **Persona** question like 'should I have coffee at 4pm?' should answer the way you would."
-
-

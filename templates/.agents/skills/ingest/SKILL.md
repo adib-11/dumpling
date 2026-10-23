@@ -240,5 +240,3 @@ On every Page you touch: refresh `summary` and set `updated` to today; keep a wo
 - Revert the Owner's hand edits on a Page. Edit around them, even when they break this format.
 - Write a Persona answer into the wiki.
 - Write anything not in the Dump as a quote, or anything about the Owner that the Dump does not say.
-
-

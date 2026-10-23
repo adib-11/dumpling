@@ -16,5 +16,3 @@ Each skill is a plain `SKILL.md` file. Read the file when its task comes up.
 
 - ingest: `.agents/skills/ingest/SKILL.md`
 - ask: `.agents/skills/ask/SKILL.md`
-
-

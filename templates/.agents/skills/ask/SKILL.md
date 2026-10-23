@@ -90,5 +90,3 @@ The date is the day of the correction. If nothing new was corrected, write no li
 The second time the same pattern appears, add it as a standing rule in `persona/STYLE.md`, creating the file if it does not exist. Write only that rule. Suffix the log line `(promoted to STYLE.md, YYYY-MM-DD)`. Do not delete the pair.
 
 A newer pair that contradicts an older one wins. Suffix the old line `(superseded YYYY-MM-DD)`. Do not delete it.
-
-
