@@ -4,10 +4,15 @@ export type TrayMenuItem = {
   enabled: boolean
 }
 
-export function trayMenuItems(brainFolder: string | null, telegramConnected: boolean): TrayMenuItem[] {
+export function trayMenuItems(
+  brainFolder: string | null,
+  telegramConnected: boolean,
+  unsaved: string | null = null,
+): TrayMenuItem[] {
   if (brainFolder) {
     return [
       { label: brainFolder, enabled: false },
+      ...(unsaved ? [{ label: unsaved, enabled: false }] : []),
       { label: "Ingest now", action: "ingest", enabled: true },
       ...(telegramConnected
         ? []

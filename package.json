@@ -96,6 +96,7 @@
     "typescript": "^7.0.2"
   },
   "dependencies": {
-    "dugite": "^3.3.1"
+    "dugite": "^3.3.1",
+    "jpeg-js": "^0.4.4"
   }
 }

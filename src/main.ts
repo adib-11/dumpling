@@ -5,6 +5,7 @@ import { acceptApiKey, loadApiKey } from "./api-key"
 import { readBrainFolder, readTelegramChat, writeBrainFolder, writeTelegramChat } from "./brain-config"
 import { createSecondBrain, defaultSecondBrainFolder } from "./create-second-brain"
 import { pollTelegram } from "./drain-telegram"
+import { openAiMedia } from "./openai-media"
 import { ingestNow, spawnOpencode } from "./ingest-now"
 import { enableLinuxAutostart } from "./login-item"
 import { connectBot, telegramBot } from "./telegram"
@@ -16,6 +17,7 @@ let tray: Tray | null = null
 let wizard: BrowserWindow | null = null
 let connecting: AbortController | null = null
 let polling = false
+let unsaved: string | null = null
 
 function configPath(): string {
   return path.join(app.getPath("userData"), "config.json")
@@ -88,7 +90,15 @@ function startPolling(): void {
   const token = loadToken()
   if (polling || !folder || chat === null || !token) return
   polling = true
-  void pollTelegram(telegramBot(token), folder, chat, new AbortController().signal)
+  const key = storedKey()
+  void pollTelegram(telegramBot(token), folder, chat, new AbortController().signal, undefined, {
+    media: key ? openAiMedia(key) : undefined,
+    onUnsaved(notice) {
+      if (notice === unsaved) return
+      unsaved = notice
+      rebuildMenu()
+    },
+  })
 }
 
 function resourcePath(...parts: string[]): string {
@@ -165,9 +175,9 @@ function rebuildMenu(): void {
   if (!tray) return
   const folder = readBrainFolder(configPath())
   tray.setContextMenu(
-    Menu.buildFromTemplate(trayMenuItems(folder, telegramConnected()).map(toMenuItem)),
+    Menu.buildFromTemplate(trayMenuItems(folder, telegramConnected(), unsaved).map(toMenuItem)),
   )
-  tray.setToolTip("Second Brain")
+  tray.setToolTip(unsaved ?? "Second Brain")
 }
 
 function createTray(): void {

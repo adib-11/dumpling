@@ -1,10 +1,32 @@
 // The Owner's own Telegram bot, through the Bot API.
 
-export type Bot = (method: string, params?: Record<string, unknown>, signal?: AbortSignal) => Promise<unknown>
+export type TelegramFile = {
+  file_id: string
+  file_size?: number
+  file_name?: string
+  mime_type?: string
+  width?: number
+}
+
+export type TelegramMessage = {
+  message_id: number
+  date: number
+  chat: { id: number; type: string }
+  text?: string
+  caption?: string
+  voice?: TelegramFile
+  audio?: TelegramFile
+  photo?: TelegramFile[]
+  document?: TelegramFile
+}
+
+export type Bot = ((method: string, params?: Record<string, unknown>, signal?: AbortSignal) => Promise<unknown>) & {
+  file(fileId: string): Promise<Buffer>
+}
 
 export type Update = {
   update_id: number
-  message?: { message_id: number; date: number; chat: { id: number; type: string }; text?: string }
+  message?: TelegramMessage
 }
 
 export const longPollSeconds = 25
@@ -12,7 +34,7 @@ export const longPollSeconds = 25
 export function telegramBot(token: string, base = "https://api.telegram.org"): Bot {
   // The token goes in the URL path, so only the BotFather shape is let through.
   if (!/^\d+:[\w-]+$/.test(token)) throw new Error("That is not a bot token.")
-  return async (method, params = {}, signal) => {
+  const call = async (method: string, params: Record<string, unknown> = {}, signal?: AbortSignal) => {
     // A long poll that outlives sleep can hang on a dead connection, so every call has a deadline.
     const deadline = AbortSignal.timeout((Number(params.timeout ?? 0) + 10) * 1000)
     const response = await fetch(`${base}/bot${token}/${method}`, {
@@ -25,6 +47,22 @@ export function telegramBot(token: string, base = "https://api.telegram.org"): B
     if (!reply.ok) throw new Error(`Telegram ${method} failed: ${reply.description ?? response.status}`)
     return reply.result
   }
+  const bot = call as Bot
+  bot.file = async (fileId: string) => {
+    const info = (await bot("getFile", { file_id: fileId })) as { file_path?: string }
+    const filePath = info.file_path ?? ""
+    // The path is appended to the bot URL. A `..` or absolute path would leave that URL.
+    if (!filePath || filePath.startsWith("/") || filePath.includes("..")) {
+      throw new Error("Telegram file path was refused.")
+    }
+    const response = await fetch(`${base}/file/bot${token}/${filePath}`, {
+      signal: AbortSignal.timeout(60_000),
+      referrerPolicy: "no-referrer",
+    })
+    if (!response.ok) throw new Error(`Telegram file download failed: ${response.status}`)
+    return Buffer.from(await response.arrayBuffer())
+  }
+  return bot
 }
 
 // Waits for the Owner's /start in a private chat and returns that chat, the only one the app accepts.
