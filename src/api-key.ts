@@ -30,7 +30,7 @@ export async function checkOpenAiKey(key: string, fetchImpl: typeof fetch = fetc
 
 export function saveApiKey(file: string, key: string, cipher: Cipher): void {
   fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, cipher.encryptString(key.trim()))
+  fs.writeFileSync(file, cipher.encryptString(key.trim()), { mode: 0o600 })
 }
 
 export function loadApiKey(file: string, cipher: Cipher): string | null {

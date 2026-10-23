@@ -1,15 +1,20 @@
 const folderStep = document.getElementById("folder-step")
 const keyStep = document.getElementById("key-step")
+const botStep = document.getElementById("bot-step")
 const input = document.getElementById("folder")
 const error = document.getElementById("error")
 const create = document.getElementById("create")
 const keyInput = document.getElementById("key")
 const keyError = document.getElementById("key-error")
 const saveKey = document.getElementById("save-key")
+const botError = document.getElementById("bot-error")
+const check = document.getElementById("check")
+const start = document.getElementById("start")
 
 function show(step) {
   folderStep.hidden = step !== "folder"
   keyStep.hidden = step !== "key"
+  botStep.hidden = step !== "bot"
 }
 
 window.wizard.start().then((step) => {
@@ -51,5 +56,29 @@ document.getElementById("key-form").addEventListener("submit", async (event) => 
   if (!result.ok) {
     keyError.textContent = result.error
     saveKey.disabled = false
+    return
+  }
+  show("bot")
+})
+
+document.getElementById("botfather").addEventListener("click", () => window.wizard.openBotFather())
+
+document.getElementById("token-form").addEventListener("submit", async (event) => {
+  event.preventDefault()
+  botError.textContent = ""
+  check.disabled = true
+  const result = await window.wizard.checkToken(document.getElementById("token").value)
+  if (!result.ok) {
+    botError.textContent = result.error
+    check.disabled = false
+    return
+  }
+  start.textContent = `Now send /start to @${result.username} from your phone.`
+  start.hidden = false
+  const connected = await window.wizard.waitStart()
+  if (!connected.ok) {
+    botError.textContent = connected.error
+    start.hidden = true
+    check.disabled = false
   }
 })

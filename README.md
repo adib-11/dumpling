@@ -4,7 +4,7 @@ A tray app for a second brain on your own computer. It is free and open source. 
 
 The product spec lives in the private repo [adib-11/second-brain](https://github.com/adib-11/second-brain), file `docs/spec/shareable.md`. This repo is the shareable app.
 
-The tray, the folder and OpenAI key steps of the wizard, and Ingest now are in place. Telegram capture is not in it yet.
+So far it has the tray, the folder, OpenAI key and bot steps of the wizard, Telegram text capture, Ingest now, and the release pipeline. Voice and photos are not in it yet.
 
 ## Download
 
@@ -53,7 +53,7 @@ If FUSE is unavailable, `APPIMAGE_EXTRACT_AND_RUN=1 ./Second-Brain-*-x86_64.AppI
 
 ## First launch
 
-The app sits in the menu bar on Mac and in the system tray on Windows and Linux. The menu shows the folder, Ingest now, and Quit.
+The app sits in the menu bar on Mac and in the system tray on Windows and Linux. The menu shows the folder, Ingest now, Connect Telegram… until a bot is connected, and Quit.
 
 The first window asks for a folder, then an OpenAI API key. The wizard checks the key with one call and stores it in the OS keychain. The default folder is `Documents/Second Brain`. Create makes that folder, without a git install on the computer (git is bundled):
 
@@ -63,6 +63,10 @@ The first window asks for a folder, then an OpenAI API key. The wizard checks th
 - `AGENTS.md`, `CONTEXT.md`, `opencode.json`, and the skills under `.agents/skills/`
 - `SOURCE_COMMIT`, the commit those templates were copied from
 - a git repo on branch `main` whose first commit is `create second brain`
+
+Next the window asks for a Telegram bot. Open BotFather, send `/newbot`, and paste the token; the app checks it with `getMe`. Then send `/start` to the new bot from your phone. That chat becomes the only one the app accepts, and the bot replies "Connected". The token is kept encrypted with Electron `safeStorage`, whose key is in the OS keychain (on Linux this needs a keyring such as GNOME Keyring or KWallet). It is never written to the second brain folder.
+
+While the computer is awake, the app long-polls the bot. Each text message becomes a Dump in `inbox/` (`device: telegram`, with its `telegram_message_id`) and is deleted from the chat. Each batch is a commit, `drain: N Dumps`. Messages from any other chat are ignored. Voice notes, photos and files stay in the chat for now.
 
 The packaged app also registers itself to open at login (macOS and Windows login items; an XDG autostart entry on Linux, aimed at the AppImage when that is how it was started).
 
