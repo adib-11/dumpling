@@ -3,6 +3,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { exec } from "dugite"
 import { checkIngest } from "./check-ingest"
+import { fetchLinks, type LinkTools } from "./fetch-link"
 import { writeIndex } from "./write-index"
 
 const gitName = "Second Brain"
@@ -56,6 +57,7 @@ export async function ingestNow(options: {
   brain: string
   apiKey: string
   runner: AgentRunner
+  links?: LinkTools
   today?: string
   now?: Date
 }): Promise<IngestResult> {
@@ -82,6 +84,12 @@ export async function ingestNow(options: {
       const dumps = listDumps(options.brain)
       // check-ingest and the no-change check read the wiki's uncommitted lines as the agent's.
       if (dumps.length > 0) await commitOwnerEdits(options.brain)
+      if (options.links) {
+        await fetchLinks(
+          dumps.map((dump) => path.join(options.brain, dump)),
+          options.links,
+        )
+      }
       if (dumps.length > 0 && options.apiKey.trim() === "") {
         await fail("OpenAI API key is missing")
       } else {

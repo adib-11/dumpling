@@ -4,7 +4,7 @@ A tray app for a second brain on your own computer. It is free and open source. 
 
 The product spec lives in the private repo [adib-11/second-brain](https://github.com/adib-11/second-brain), file `docs/spec/shareable.md`. This repo is the shareable app.
 
-So far it has the tray, the folder, OpenAI key and bot steps of the wizard, Telegram text capture, Ingest now, and the release pipeline. Voice and photos are not in it yet.
+So far it has the tray, the folder, OpenAI key and bot steps of the wizard, Telegram text capture, Ingest now with link fetching, and the release pipeline. Voice and photos are not in it yet.
 
 ## Download
 
@@ -70,6 +70,8 @@ While the computer is awake, the app long-polls the bot. Each text message becom
 
 The packaged app also registers itself to open at login (macOS and Windows login items; an XDG autostart entry on Linux, aimed at the AppImage when that is how it was started).
 
+Before filing, Ingest now fetches the link of every Dump with a `url` into a `<name>.fetched.md` sidecar beside it, so the agent reads the linked text without going online. Articles go through `defuddle`, PDFs through `pdfjs-dist`, YouTube captions through the bundled `yt-dlp` and `deno`, X posts through fxtwitter, LinkedIn posts and articles through the page's JSON-LD, Apple Podcasts through the feed's transcript, and Instagram and TikTok down to the caption. A link is never fetched twice. A paywall, a 404 or any failure writes `status: unfetched` with the reason and whatever title and description were found. A podcast episode with no published transcript stays unfetched; v1 transcribed its audio with `yap`, which is Mac only.
+
 Ingest now files markdown Dumps dropped in `inbox/`. It runs the bundled opencode binary on the ingest skill, up to 25 Dumps at a time, then moves that chunk to `vault/raw/YYYY/MM/` and commits `ingest: <date>, N Dumps`. The cost of the run is appended to `.state/runs.tsv`. The key is not written into the folder, the log, or the opencode process arguments.
 
 ## Templates
@@ -86,5 +88,7 @@ npm test
 npm run typecheck
 npm start
 ```
+
+`node scripts/fetch-opencode.js` and `node scripts/fetch-yt-dlp.js` put the bundled binaries in `vendor/`. `node scripts/fetch-link-live.js` (after `npm run build`) fetches one real link per route and prints each result; it needs the network, so it is not part of `npm test`.
 
 `npm start` opens the wizard and the tray. It does not register a login item; that happens in the packaged app.

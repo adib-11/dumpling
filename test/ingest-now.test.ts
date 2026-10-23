@@ -350,3 +350,40 @@ test("uncommitted Owner edits are committed first, so a runner that changed noth
   assert.equal(log.stdout.trim(), "owner edits")
   assert.match(fs.readFileSync(path.join(brain, "vault", "wiki", "me.md"), "utf8"), /I wrote this by hand/)
 })
+
+test("a link Dump gets its sidecar before the runner reads it, and the sidecar is filed with it", async () => {
+  const dump = "2026-10-08-120000-telegram.md"
+  const brain = await brainWith(
+    dump,
+    "---\ncaptured: 2026-10-08T12:00:00+06:00\nkind: link\nurl: https://example.com/missing\n---\nhttps://example.com/missing\n",
+  )
+  const fetched: string[] = []
+  let seen = ""
+  const result = await ingestNow({
+    brain,
+    apiKey: key,
+    today,
+    now,
+    links: {
+      fetch: async (url) => {
+        fetched.push(url)
+        return new Response("gone", { status: 404 })
+      },
+      ytDlp: async () => 1,
+    },
+    runner: async () => {
+      seen = fs.readFileSync(path.join(brain, "inbox", "2026-10-08-120000-telegram.fetched.md"), "utf8")
+      fs.appendFileSync(path.join(brain, "vault", "wiki", "log.md"), "- Raw: [[2026-10-08-120000-telegram]]\n")
+      return { code: 0, stdout: "" }
+    },
+  })
+
+  assert.equal(result.status, "ok")
+  assert.deepEqual(fetched, ["https://example.com/missing"])
+  assert.match(seen, /^status: unfetched$/m)
+  assert.match(seen, /^reason: "HTTP 404"$/m)
+  assert.equal(
+    fs.existsSync(path.join(brain, "vault", "raw", "2026", "10", "2026-10-08-120000-telegram.fetched.md")),
+    true,
+  )
+})
