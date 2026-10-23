@@ -330,3 +330,23 @@ fs.writeFileSync(process.argv[2], JSON.stringify({ argv: process.argv, env: proc
   assert.equal(recorded.env, key)
   assert.equal(recorded.argv.some((arg: string) => arg.includes(key)), false)
 })
+
+test("uncommitted Owner edits are committed first, so a runner that changed nothing still fails", async () => {
+  const dump = "2026-10-08-150000-mac.md"
+  const brain = await brainWith(dump, "---\nkind: text\n---\nowner edited first\n")
+  fs.appendFileSync(path.join(brain, "vault", "wiki", "me.md"), "- I wrote this by hand.\n")
+  const result = await ingestNow({
+    brain,
+    apiKey: key,
+    today,
+    now,
+    runner: async () => ({ code: 0, stdout: "" }),
+  })
+
+  assert.equal(result.status, "failed")
+  assert.equal(result.reason, "runner changed nothing in vault/wiki/")
+  assert.equal(fs.existsSync(path.join(brain, "inbox", dump)), true)
+  const log = await exec(["log", "-1", "--format=%s"], brain)
+  assert.equal(log.stdout.trim(), "owner edits")
+  assert.match(fs.readFileSync(path.join(brain, "vault", "wiki", "me.md"), "utf8"), /I wrote this by hand/)
+})

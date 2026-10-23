@@ -1,7 +1,5 @@
 import { spawn as nodeSpawn, type SpawnOptions } from "node:child_process"
-import { createHash } from "node:crypto"
 import fs from "node:fs"
-import os from "node:os"
 import path from "node:path"
 import { exec } from "dugite"
 import { checkIngest } from "./check-ingest"
@@ -10,6 +8,7 @@ import { writeIndex } from "./write-index"
 const gitName = "Second Brain"
 const gitEmail = "second-brain@localhost"
 const chunkSize = 25
+const running = new Set<string>()
 
 export type AgentRun = {
   args: string[]
@@ -60,17 +59,10 @@ export async function ingestNow(options: {
   today?: string
   now?: Date
 }): Promise<IngestResult> {
-  // ponytail: one lock directory per brain in tmp. A crash holds it until reboot.
-  const lockDir = path.join(
-    os.tmpdir(),
-    `second-brain-ingest-${createHash("sha256").update(path.resolve(options.brain)).digest("hex").slice(0, 16)}.lock`,
-  )
-  try {
-    fs.mkdirSync(lockDir)
-  } catch (error) {
-    if (isCode(error, "EEXIST")) return { status: "already-running", dumps: 0, cost: 0 }
-    throw error
-  }
+  // The app is single-instance, so an in-process lock is enough, and a crash or quit never leaves it held.
+  const lock = path.resolve(options.brain)
+  if (running.has(lock)) return { status: "already-running", dumps: 0, cost: 0 }
+  running.add(lock)
 
   const now = options.now ?? new Date()
   const today = options.today ?? localDate(now)
@@ -88,65 +80,67 @@ export async function ingestNow(options: {
   try {
     try {
       const dumps = listDumps(options.brain)
-    if (dumps.length > 0 && options.apiKey.trim() === "") {
-      await fail("OpenAI API key is missing")
-    } else {
-      for (let i = 0; i < dumps.length; i += chunkSize) {
-        const chunk = dumps.slice(i, i + chunkSize)
-        const ask = async (prompt: string) => {
-          const secret = options.apiKey.trim()
-          const safePrompt = secret === "" ? prompt : prompt.split(secret).join("[redacted]")
-          const run = await options.runner({
-            args: ["run", "-m", "openai/gpt-5.6-luna", "--agent", "ingest", "--format", "json", safePrompt],
-            env: { ...process.env, OPENAI_API_KEY: options.apiKey },
-            cwd: options.brain,
-          })
-          cost = round4(cost + costOf(run.stdout))
-          return run
-        }
-        const filed = await ask(
-          `Read .agents/skills/ingest/SKILL.md and follow it. File these Dumps: ${chunk.join(" ")}`,
-        )
-        if (filed.code !== 0) {
-          await fail(`runner exited ${filed.code}`)
-          break
-        }
-        if (!(await wikiChanged(options.brain))) {
-          await fail("runner changed nothing in vault/wiki/")
-          break
-        }
-        const problems = await checkIngest(options.brain, chunk)
-        if (problems.length > 0) {
-          const fix = await ask(
-            `Read .agents/skills/ingest/SKILL.md. You filed these Dumps: ${chunk.join(" ")}. A check found these problems in the Pages you wrote. Fix each one, change nothing else, then stop.\n${problems.join("\n")}`,
+      // check-ingest and the no-change check read the wiki's uncommitted lines as the agent's.
+      if (dumps.length > 0) await commitOwnerEdits(options.brain)
+      if (dumps.length > 0 && options.apiKey.trim() === "") {
+        await fail("OpenAI API key is missing")
+      } else {
+        for (let i = 0; i < dumps.length; i += chunkSize) {
+          const chunk = dumps.slice(i, i + chunkSize)
+          const ask = async (prompt: string) => {
+            const secret = options.apiKey.trim()
+            const safePrompt = secret === "" ? prompt : prompt.split(secret).join("[redacted]")
+            const run = await options.runner({
+              args: ["run", "-m", "openai/gpt-5.6-luna", "--agent", "ingest", "--format", "json", safePrompt],
+              env: { ...process.env, OPENAI_API_KEY: options.apiKey },
+              cwd: options.brain,
+            })
+            cost = round4(cost + costOf(run.stdout))
+            return run
+          }
+          const filed = await ask(
+            `Read .agents/skills/ingest/SKILL.md and follow it. File these Dumps: ${chunk.join(" ")}`,
           )
-          if (fix.code !== 0) {
-            await fail(`runner exited ${fix.code}`)
+          if (filed.code !== 0) {
+            await fail(`runner exited ${filed.code}`)
             break
           }
-          const left = await checkIngest(options.brain, chunk)
-          check = left.length > 0 ? "failed" : "fixed"
+          if (!(await wikiChanged(options.brain))) {
+            await fail("runner changed nothing in vault/wiki/")
+            break
+          }
+          const problems = await checkIngest(options.brain, chunk)
+          if (problems.length > 0) {
+            const fix = await ask(
+              `Read .agents/skills/ingest/SKILL.md. You filed these Dumps: ${chunk.join(" ")}. A check found these problems in the Pages you wrote. Fix each one, change nothing else, then stop.\n${problems.join("\n")}`,
+            )
+            if (fix.code !== 0) {
+              await fail(`runner exited ${fix.code}`)
+              break
+            }
+            const left = await checkIngest(options.brain, chunk)
+            check = left.length > 0 ? "failed" : "fixed"
+          }
+          writeIndex(options.brain)
+          for (const dump of chunk) moveDump(options.brain, dump)
+          await commit(options.brain, `ingest: ${today}, ${chunk.length} Dumps`)
+          dumpsFiled += chunk.length
         }
-        writeIndex(options.brain)
-        for (const dump of chunk) moveDump(options.brain, dump)
-        await commit(options.brain, `ingest: ${today}, ${chunk.length} Dumps`)
-        dumpsFiled += chunk.length
+      }
+    } catch (error) {
+      status = "failed"
+      reason = error instanceof Error ? error.message : "ingest failed"
+      try {
+        await stashChunk(options.brain, now)
+      } catch {
+        // The chunk is already failed. Losing the stash must not hide that.
       }
     }
-  } catch (error) {
-    status = "failed"
-    reason = error instanceof Error ? error.message : "ingest failed"
-    try {
-      await stashChunk(options.brain, now)
-    } catch {
-      // The chunk is already failed. Losing the stash must not hide that.
-    }
-  }
 
-  record(options.brain, now, status, dumpsFiled, cost, check)
+    record(options.brain, now, status, dumpsFiled, cost, check)
     return { status, dumps: dumpsFiled, cost, reason }
   } finally {
-    fs.rmSync(lockDir, { recursive: true, force: true })
+    running.delete(lock)
   }
 }
 
@@ -218,6 +212,17 @@ function gitEnv(): Record<string, string> {
   }
 }
 
+async function commitOwnerEdits(brain: string): Promise<void> {
+  const env = gitEnv()
+  const added = await exec(["add", "-A", "--", ".", ":!inbox"], brain, { env })
+  if (added.exitCode !== 0) throw new Error(added.stderr || "git add failed")
+  const staged = await exec(["diff", "--cached", "--quiet"], brain)
+  if (staged.exitCode === 0) return
+  if (staged.exitCode !== 1) throw new Error(staged.stderr || "git diff failed")
+  const committed = await exec(["commit", "-m", "owner edits", "--no-gpg-sign"], brain, { env })
+  if (committed.exitCode !== 0) throw new Error(committed.stderr || committed.stdout || "git commit failed")
+}
+
 async function commit(brain: string, message: string): Promise<void> {
   const env = gitEnv()
   const added = await exec(["add", "--", "inbox", "vault"], brain, { env })
@@ -234,8 +239,4 @@ function localDate(date: Date): string {
 
 function round4(n: number): number {
   return Math.round(n * 10000) / 10000
-}
-
-function isCode(error: unknown, code: string): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === code
 }
