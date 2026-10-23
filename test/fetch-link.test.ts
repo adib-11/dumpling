@@ -387,6 +387,42 @@ test("apple podcasts: the feed's transcript, VTT preferred; no transcript is unf
   assert.ok(!calls.some((call) => call.url.endsWith(".mp3")))
 })
 
+test("apple podcasts: a JSON transcript is the text when the feed publishes no VTT", async () => {
+  web.set("https://itunes.apple.com/lookup?id=99&entity=podcastEpisode&limit=200", {
+    type: "application/json",
+    body: JSON.stringify({
+      results: [
+        { wrapperType: "track", collectionName: "JSON Show", feedUrl: "https://feed.example/json-rss" },
+        {
+          wrapperType: "podcastEpisode",
+          trackId: 42,
+          trackName: "Only JSON",
+          releaseDate: "2024-03-01T00:00:00Z",
+          episodeGuid: "guid-json",
+          episodeUrl: "https://cdn.example/json.mp3",
+        },
+      ],
+    }),
+  })
+  web.set("https://feed.example/json-rss", {
+    type: "application/rss+xml",
+    body: `<rss><channel><item><guid>guid-json</guid>
+<podcast:transcript url="https://show.example/only.json" type="application/json" />
+<enclosure url="https://cdn.example/json.mp3" type="audio/mpeg"/></item></channel></rss>`,
+  })
+  web.set("https://show.example/only.json", {
+    type: "application/json",
+    body: JSON.stringify({
+      segments: [{ body: "Ruby is a joy." }, { speaker: "Host" }, { body: "And so is shipping." }],
+    }),
+  })
+  const s = await fetchDump("c3", "https://podcasts.apple.com/us/podcast/only-json/id99?i=42")
+  assert.ok(lines(s).includes("status: fetched"), s)
+  assert.ok(lines(s).includes('title: "Only JSON"'))
+  assert.equal(body(s), "Ruby is a joy. And so is shipping.\n")
+  assert.ok(!calls.some((call) => call.url.endsWith("json.mp3")))
+})
+
 test("never re-fetch a Dump with a sidecar; no url, no sidecar; sidecars are not Dumps", async () => {
   const all = fs.readdirSync(inbox).map((name) => path.join(inbox, name))
   assert.ok(all.some((file) => file.endsWith(".fetched.md")))
