@@ -308,6 +308,27 @@ test("a photo of a page becomes a Dump with a 1200 px JPEG and the text read fro
   )
 })
 
+test("a photo still unreadable after 12 hours is kept as a placeholder so its file id is not lost", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  const old = Math.floor(Date.now() / 1000) - 50_000
+  api.files.set("ph", wideJpeg(80, 40))
+  api.updates = [message(25, 35, old, { caption: "the page", photo: [{ file_id: "ph", width: 80, file_size: 40 }] })]
+
+  await drainTelegram(bot, folder, 111, undefined, {
+    async transcribe() {
+      return ""
+    },
+    async readImage() {
+      throw new Error("down")
+    },
+  })
+
+  const dump = fs.readFileSync(path.join(folder, "inbox", inbox(folder)[0]), "utf8")
+  assert.match(dump, /photo not downloaded or not readable, file_id ph\n\nthe page\n$/)
+  assert.equal(fs.readdirSync(path.join(folder, "inbox")).some((name) => name.endsWith(".jpg")), false)
+})
+
 test("a photo that cannot be read stays in the chat", async (t) => {
   const { folder, api, bot } = await setup()
   t.after(api.close)
