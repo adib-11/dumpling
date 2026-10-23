@@ -1,11 +1,12 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, safeStorage, shell, Tray } from "electron"
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, shell, Tray } from "electron"
 import fs from "node:fs"
 import path from "node:path"
 import { acceptApiKey, loadApiKey } from "./api-key"
 import { readBrainFolder, readTelegramChat, writeBrainFolder, writeTelegramChat } from "./brain-config"
 import { createSecondBrain, defaultSecondBrainFolder } from "./create-second-brain"
 import { pollTelegram } from "./drain-telegram"
-import { ingestNow, spawnOpencode } from "./ingest-now"
+import { backupRemote, hideCredentials, setBackupRemote } from "./git-remote"
+import { ingestNow, spawnOpencode, type IngestResult } from "./ingest-now"
 import { enableLinuxAutostart } from "./login-item"
 import { connectBot, telegramBot } from "./telegram"
 import { trayMenuItems, type TrayMenuItem } from "./tray-menu"
@@ -16,6 +17,8 @@ let tray: Tray | null = null
 let wizard: BrowserWindow | null = null
 let connecting: AbortController | null = null
 let polling = false
+let wizardStep: "remote" | null = null
+let backupFailed = false
 
 function configPath(): string {
   return path.join(app.getPath("userData"), "config.json")
@@ -114,13 +117,14 @@ function enableLogin(): void {
   }
 }
 
-function openWizard(): void {
+function openWizard(step: "remote" | null = null): void {
   if (wizard) {
     wizard.show()
     wizard.focus()
     return
   }
   if (process.platform === "darwin") void app.dock?.show()
+  wizardStep = step
   wizard = new BrowserWindow({
     width: 520,
     height: 420,
@@ -140,6 +144,7 @@ function openWizard(): void {
   wizard.on("closed", () => {
     connecting?.abort()
     wizard = null
+    wizardStep = null
     if (process.platform === "darwin") app.dock?.hide()
   })
 }
@@ -153,11 +158,13 @@ function toMenuItem(item: TrayMenuItem): Electron.MenuItemConstructorOptions {
         ? () => app.quit()
         : item.action === "setup"
           ? () => openWizard()
-          : item.action === "ingest"
-            ? () => {
-                void ingestFromTray()
-              }
-            : undefined,
+          : item.action === "remote"
+            ? () => openWizard("remote")
+            : item.action === "ingest"
+              ? () => {
+                  void ingestFromTray()
+                }
+              : undefined,
   }
 }
 
@@ -165,7 +172,7 @@ function rebuildMenu(): void {
   if (!tray) return
   const folder = readBrainFolder(configPath())
   tray.setContextMenu(
-    Menu.buildFromTemplate(trayMenuItems(folder, telegramConnected()).map(toMenuItem)),
+    Menu.buildFromTemplate(trayMenuItems(folder, telegramConnected(), backupFailed).map(toMenuItem)),
   )
   tray.setToolTip("Second Brain")
 }
@@ -205,10 +212,23 @@ async function ingestFromTray(): Promise<void> {
       runner: (run) => spawnOpencode(bin, run),
     })
     if (result.status === "failed") console.error(redact(result.reason ?? "Ingest failed.", apiKey))
+    showPush(result)
   } catch (error) {
     const message = error instanceof Error ? error.message : "Ingest failed."
     console.error(redact(message, apiKey))
   }
+}
+
+// A failed push shows in the tray until a push succeeds, and notifies once.
+function showPush(result: IngestResult): void {
+  if (result.push === undefined) return
+  const failed = result.push === "failed"
+  if (failed) console.error(`Backup push failed: ${result.pushError ?? ""}`)
+  if (failed && !backupFailed && Notification.isSupported()) {
+    new Notification({ title: "Second Brain", body: "Backup push failed. Ingest still filed everything." }).show()
+  }
+  backupFailed = failed
+  rebuildMenu()
 }
 
 function start(): void {
@@ -233,7 +253,28 @@ function start(): void {
     tray = null
   })
 
-  ipcMain.handle("wizard:start", () => setupStep() ?? "bot")
+  ipcMain.handle("wizard:start", () => wizardStep ?? setupStep() ?? "bot")
+
+  ipcMain.handle("wizard:backup-remote", async () => {
+    const folder = readBrainFolder(configPath())
+    const url = folder ? await backupRemote(folder) : null
+    return url === null ? null : hideCredentials(url)
+  })
+
+  ipcMain.handle("wizard:save-remote", async (_event, url: unknown) => {
+    const folder = readBrainFolder(configPath())
+    if (!folder) return { ok: false as const, error: "Choose a folder first." }
+    if (typeof url !== "string") return { ok: false as const, error: "Paste a git remote URL." }
+    try {
+      await setBackupRemote(folder, url)
+      if (url.trim() === "") backupFailed = false
+      rebuildMenu()
+      wizard?.close()
+      return { ok: true as const }
+    } catch (error) {
+      return { ok: false as const, error: hideCredentials(errorMessage(error, "Could not set the remote.")) }
+    }
+  })
 
   ipcMain.handle("wizard:open-key-page", () => shell.openExternal(openaiKeysUrl))
 
