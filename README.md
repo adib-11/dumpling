@@ -4,7 +4,7 @@ A tray app for a second brain on your own computer. It is free and open source. 
 
 The product spec lives in the private repo [adib-11/second-brain](https://github.com/adib-11/second-brain), file `docs/spec/shareable.md`. This repo is the shareable app.
 
-So far it has the tray, the folder, OpenAI key and bot steps of the wizard, Telegram text capture, Ingest now, and the release pipeline. Voice and photos are not in it yet.
+So far it has the tray, the folder, OpenAI key and bot steps of the wizard, Telegram text capture, Ingest now and the daily Ingest with Undo, tray health, and the release pipeline. Voice and photos are not in it yet.
 
 ## Download
 
@@ -53,7 +53,7 @@ If FUSE is unavailable, `APPIMAGE_EXTRACT_AND_RUN=1 ./Second-Brain-*-x86_64.AppI
 
 ## First launch
 
-The app sits in the menu bar on Mac and in the system tray on Windows and Linux. The menu shows the folder, Ingest now, Connect Telegram… until a bot is connected, and Quit.
+The app sits in the menu bar on Mac and in the system tray on Windows and Linux. The menu shows the folder, Ingest now, Undo last Ingest, Connect Telegram… until a bot is connected, and Quit.
 
 The first window asks for a folder, then an OpenAI API key. The wizard checks the key with one call and stores it in the OS keychain. The default folder is `Documents/Second Brain`. Create makes that folder, without a git install on the computer (git is bundled):
 
@@ -71,6 +71,8 @@ While the computer is awake, the app long-polls the bot. Each text message becom
 The packaged app also registers itself to open at login (macOS and Windows login items; an XDG autostart entry on Linux, aimed at the AppImage when that is how it was started).
 
 Ingest now files markdown Dumps dropped in `inbox/`. It runs the bundled opencode binary on the ingest skill, up to 25 Dumps at a time, then moves that chunk to `vault/raw/YYYY/MM/` and commits `ingest: <date>, N Dumps`. The cost of the run is appended to `.state/runs.tsv`. The key is not written into the folder, the log, or the opencode process arguments.
+
+Ingest also runs by itself once a day: at 03:00, or at the first wake after it if the computer was asleep, right after a Telegram drain. A chunk fails on a non-zero exit, a 20 minute timeout, or no change in `vault/wiki/`. Its edits go to a git stash named `failed ingest <time>` (never a reset), its Dumps stay in `inbox/`, and a desktop notification names the stash. A Dump that failed twice is retried alone, and one that fails twice alone moves to `inbox/failed/`. The tray icon gets a red dot after a failed Ingest and an amber dot when Telegram has not drained for 20 h. Undo last Ingest reverts the newest `ingest:` commit, which restores the wiki and puts its Dumps back in `inbox/`; an Undo that would overwrite a later edit changes nothing.
 
 ## Templates
 

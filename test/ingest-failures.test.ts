@@ -5,7 +5,7 @@ import path from "node:path"
 import test from "node:test"
 import { exec } from "dugite"
 import { createSecondBrain } from "../src/create-second-brain"
-import { ingestNow, type AgentRunner } from "../src/ingest-now"
+import { ingestNow, lastIngestStatus, type AgentRunner } from "../src/ingest-now"
 
 // The failure cases of tests/ingest.sh in adib-11/second-brain, ported (sections 6, 6b, 7 and 8).
 
@@ -90,11 +90,17 @@ test("each failure kind stashes the chunk, names the stash in a notification, an
     }
   }
   assert.equal(fails(brain, "2026-10-08-120000-mac"), 3)
+  assert.equal(lastIngestStatus(brain), "failed")
 
   const result = await ingestNow({ brain, apiKey: key, today, now, runner: good(brain) })
   assert.equal(result.status, "ok")
   assert.equal(fs.existsSync(path.join(brain, "vault", "raw", "2026", "10", dump)), true)
   assert.equal(fails(brain, "2026-10-08-120000-mac"), undefined)
+  assert.equal(lastIngestStatus(brain), "ok")
+})
+
+test("a brain that never ran Ingest has no last status", async () => {
+  assert.equal(lastIngestStatus(await brainWith()), null)
 })
 
 test("a failure to write index.md fails the chunk like any other failure", async () => {

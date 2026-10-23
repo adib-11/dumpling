@@ -1,14 +1,27 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, safeStorage, shell, Tray } from "electron"
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeImage,
+  Notification,
+  powerMonitor,
+  safeStorage,
+  shell,
+  Tray,
+} from "electron"
 import fs from "node:fs"
 import path from "node:path"
 import { acceptApiKey, loadApiKey } from "./api-key"
 import { readBrainFolder, readTelegramChat, writeBrainFolder, writeTelegramChat } from "./brain-config"
 import { createSecondBrain, defaultSecondBrainFolder } from "./create-second-brain"
 import { pollTelegram } from "./drain-telegram"
-import { ingestNow, spawnOpencode } from "./ingest-now"
+import { ingestNow, lastIngestStatus, spawnOpencode, undoLastIngest } from "./ingest-now"
 import { enableLinuxAutostart } from "./login-item"
+import { claimDailyIngest } from "./schedule"
 import { connectBot, telegramBot } from "./telegram"
-import { trayMenuItems, type TrayMenuItem } from "./tray-menu"
+import { drainWarnMs, trayHealth, trayMenuItems, type TrayHealth, type TrayMenuItem } from "./tray-menu"
 
 const openaiKeysUrl = "https://platform.openai.com/api-keys"
 
@@ -16,6 +29,8 @@ let tray: Tray | null = null
 let wizard: BrowserWindow | null = null
 let connecting: AbortController | null = null
 let polling = false
+let lastDrained: Date | null = null
+let health: TrayHealth = "ok"
 
 function configPath(): string {
   return path.join(app.getPath("userData"), "config.json")
@@ -88,7 +103,55 @@ function startPolling(): void {
   const token = loadToken()
   if (polling || !folder || chat === null || !token) return
   polling = true
-  void pollTelegram(telegramBot(token), folder, chat, new AbortController().signal)
+  drainGrace()
+  // The daily Ingest starts right after a drain, so it files what Telegram held overnight.
+  void pollTelegram(telegramBot(token), folder, chat, new AbortController().signal, undefined, () => {
+    lastDrained = new Date()
+    dailyIngest()
+    refreshHealth()
+  })
+}
+
+// After a start or a wake, the poll gets five minutes to drain before the tray warns.
+function drainGrace(): void {
+  const floor = Date.now() - drainWarnMs + 5 * 60 * 1000
+  if (!lastDrained || lastDrained.getTime() < floor) lastDrained = new Date(floor)
+}
+
+function dailyIngest(): void {
+  const folder = readBrainFolder(configPath())
+  if (!folder || storedKey() === null) return
+  if (claimDailyIngest(path.join(folder, ".state", "daily-ingest"), new Date())) void runIngest(false)
+}
+
+function notify(body: string): void {
+  if (Notification.isSupported()) new Notification({ title: "Second Brain", body }).show()
+}
+
+function trayImage(state: TrayHealth): Electron.NativeImage {
+  const name = state === "ok" ? "icon.png" : `icon-${state}.png`
+  const icon = resourcePath("assets", name)
+  const image = nativeImage.createFromPath(icon).resize({ width: 22, height: 22 })
+  if (image.isEmpty()) throw new Error(`Tray icon is missing or unreadable: ${icon}`)
+  // A template image is drawn in one colour, which would hide the warning dot.
+  if (process.platform === "darwin" && state === "ok") image.setTemplateImage(true)
+  return image
+}
+
+function refreshHealth(): void {
+  const folder = readBrainFolder(configPath())
+  const next = trayHealth(folder ? lastIngestStatus(folder) : null, polling ? lastDrained : null, new Date())
+  if (next === health || !tray) return
+  health = next
+  tray.setImage(trayImage(health))
+  tray.setToolTip(
+    health === "failing"
+      ? "Second Brain: the last Ingest failed"
+      : health === "not-drained"
+        ? "Second Brain: Telegram not drained for 20 h"
+        : "Second Brain",
+  )
+  if (health === "not-drained") notify("Telegram has not drained for 20 h. Messages older than 24 h are lost.")
 }
 
 function resourcePath(...parts: string[]): string {
@@ -155,9 +218,13 @@ function toMenuItem(item: TrayMenuItem): Electron.MenuItemConstructorOptions {
           ? () => openWizard()
           : item.action === "ingest"
             ? () => {
-                void ingestFromTray()
+                void runIngest(true)
               }
-            : undefined,
+            : item.action === "undo"
+              ? () => {
+                  void undoFromTray()
+                }
+              : undefined,
   }
 }
 
@@ -167,35 +234,32 @@ function rebuildMenu(): void {
   tray.setContextMenu(
     Menu.buildFromTemplate(trayMenuItems(folder, telegramConnected()).map(toMenuItem)),
   )
-  tray.setToolTip("Second Brain")
 }
 
 function createTray(): void {
-  const icon = resourcePath("assets", "icon.png")
-  const image = nativeImage.createFromPath(icon).resize({ width: 22, height: 22 })
-  if (image.isEmpty()) throw new Error(`Tray icon is missing or unreadable: ${icon}`)
-  if (process.platform === "darwin") image.setTemplateImage(true)
-  tray = new Tray(image)
+  tray = new Tray(trayImage("ok"))
+  tray.setToolTip("Second Brain")
   if (process.platform !== "darwin") {
     tray.on("click", () => tray?.popUpContextMenu())
   }
   rebuildMenu()
+  refreshHealth()
 }
 
-async function ingestFromTray(): Promise<void> {
+async function runIngest(fromTray: boolean): Promise<void> {
   const folder = readBrainFolder(configPath())
   if (!folder) {
-    openWizard()
+    if (fromTray) openWizard()
     return
   }
   const apiKey = storedKey()
   if (!apiKey) {
-    openWizard()
+    if (fromTray) openWizard()
     return
   }
   const bin = opencodeBin()
   if (!fs.existsSync(bin)) {
-    dialog.showErrorBox("Second Brain", "The opencode binary is missing.")
+    notify("Ingest stopped: the opencode binary is missing.")
     return
   }
   try {
@@ -203,11 +267,33 @@ async function ingestFromTray(): Promise<void> {
       brain: folder,
       apiKey,
       runner: (run) => spawnOpencode(bin, run),
+      notify: (text) => notify(redact(text, apiKey)),
     })
     if (result.status === "failed") console.error(redact(result.reason ?? "Ingest failed.", apiKey))
   } catch (error) {
     const message = error instanceof Error ? error.message : "Ingest failed."
     console.error(redact(message, apiKey))
+    notify(redact(`Ingest failed: ${message}`, apiKey))
+  }
+  refreshHealth()
+}
+
+async function undoFromTray(): Promise<void> {
+  const folder = readBrainFolder(configPath())
+  if (!folder) return
+  try {
+    const result = await undoLastIngest(folder)
+    notify(
+      result.status === "ok"
+        ? "Undid the last Ingest. Its Dumps are back in inbox/."
+        : result.status === "nothing"
+          ? "There is no Ingest to undo."
+          : result.status === "already-running"
+            ? "Ingest is running. Undo again when it is done."
+            : `Undo failed, nothing changed: ${result.reason}`,
+    )
+  } catch (error) {
+    notify(`Undo failed: ${errorMessage(error, "unknown error")}`)
   }
 }
 
@@ -315,6 +401,14 @@ function start(): void {
     createTray()
     startPolling()
     if (setupStep()) openWizard()
+    powerMonitor.on("resume", drainGrace)
+    // Without a bot, the clock starts the daily Ingest. With one, each drain does (startPolling).
+    const tick = () => {
+      if (!polling) dailyIngest()
+      refreshHealth()
+    }
+    tick()
+    setInterval(tick, 60 * 1000)
   })
 }
 

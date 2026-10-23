@@ -197,3 +197,21 @@ function files(folder: string): string[] {
     .filter((name) => !name.startsWith(".git/"))
     .sort()
 }
+
+test("polling reports each successful drain, after its Dumps are saved", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  const stop = new AbortController()
+  t.after(() => stop.abort())
+  api.token = "999:other-token"
+  const drained: number[] = []
+
+  void pollTelegram(bot, folder, 111, stop.signal, 10, () => drained.push(inbox(folder).length))
+  await until(() => api.calls.length > 1)
+  assert.deepEqual(drained, [])
+  api.updates.push(message(1, 10, at, { text: "sent from the phone" }))
+  api.token = "123:secret-token"
+
+  await until(() => drained.length > 0)
+  assert.equal(drained[0], 1)
+})

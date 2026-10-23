@@ -56,17 +56,20 @@ export async function drainTelegram(
 }
 
 // Long-polls the bot until stopped. A failed poll is retried; its batch stays unconfirmed, so nothing is lost.
+// onDrained runs after each successful poll.
 export async function pollTelegram(
   bot: Bot,
   folder: string,
   chat: number,
   stop: AbortSignal,
   retryMs = 5000,
+  onDrained: () => void = () => {},
 ): Promise<void> {
   let offset: number | undefined
   while (!stop.aborted) {
     try {
       offset = await drainTelegram(bot, folder, chat, offset)
+      onDrained()
     } catch (error) {
       console.error("drain-telegram: poll failed", error)
       await new Promise((resolve) => setTimeout(resolve, retryMs))

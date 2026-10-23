@@ -286,6 +286,14 @@ function record(brain: string, now: Date, status: string, dumps: number, cost: n
   fs.appendFileSync(file, `${now.toISOString()}\t${status}\t${dumps}\t${cost.toFixed(4)}\t${check}\n`)
 }
 
+// The status of the newest run in .state/runs.tsv, or null before the first run.
+export function lastIngestStatus(brain: string): string | null {
+  const file = path.join(brain, ".state", "runs.tsv")
+  if (!fs.existsSync(file)) return null
+  const last = fs.readFileSync(file, "utf8").trimEnd().split("\n").at(-1) ?? ""
+  return last.startsWith("when\t") ? null : (last.split("\t")[1] ?? null)
+}
+
 // Returns the stash's name, or nothing when there was nothing to stash.
 async function stashChunk(brain: string, now: Date): Promise<string | undefined> {
   const status = await exec(["status", "--porcelain", "--", ".", ":!inbox"], brain)
