@@ -323,6 +323,7 @@ fs.writeFileSync(process.argv[2], JSON.stringify({ argv: process.argv, env: proc
     args: [script, out, "run", "-m", "openai/gpt-5.6-luna", "--agent", "ingest", "--format", "json", "File these Dumps"],
     env: { ...process.env, OPENAI_API_KEY: key },
     cwd: dir,
+    signal: new AbortController().signal,
   }
   const result = await spawnOpencode(process.execPath, run, spawn)
   assert.equal(result.code, 0)
@@ -346,7 +347,20 @@ test("uncommitted Owner edits are committed first, so a runner that changed noth
   assert.equal(result.status, "failed")
   assert.equal(result.reason, "runner changed nothing in vault/wiki/")
   assert.equal(fs.existsSync(path.join(brain, "inbox", dump)), true)
-  const log = await exec(["log", "-1", "--format=%s"], brain)
-  assert.equal(log.stdout.trim(), "owner edits")
+  const log = await exec(["log", "-2", "--format=%s"], brain)
+  assert.equal(log.stdout, "drain: 1 Dumps\nowner edits\n")
   assert.match(fs.readFileSync(path.join(brain, "vault", "wiki", "me.md"), "utf8"), /I wrote this by hand/)
+})
+
+test("an aborted opencode run is killed", async () => {
+  const alarm = new AbortController()
+  const started = Date.now()
+  const run = spawnOpencode(
+    process.execPath,
+    { args: ["-e", "setTimeout(() => {}, 20000)"], env: process.env, cwd: os.tmpdir(), signal: alarm.signal },
+    spawn,
+  )
+  setTimeout(() => alarm.abort(), 100)
+  await assert.rejects(run, { name: "AbortError" })
+  assert.equal(Date.now() - started < 10000, true)
 })

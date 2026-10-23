@@ -75,7 +75,7 @@ export async function pollTelegram(
 }
 
 // Commits every Dump not yet in git, including any a failed commit left behind, and nothing else.
-async function commitNewDumps(folder: string): Promise<void> {
+export async function commitNewDumps(folder: string): Promise<void> {
   const status = await git(["status", "--porcelain", "-z", "--untracked-files=all", "--", "inbox"], folder)
   const fresh = status
     .split("\0")
