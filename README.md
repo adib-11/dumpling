@@ -4,7 +4,7 @@ A tray app for a second brain on your own computer. It is free and open source. 
 
 The product spec lives in the private repo [adib-11/second-brain](https://github.com/adib-11/second-brain), file `docs/spec/shareable.md`. This repo is the shareable app.
 
-So far it has the tray, the folder, OpenAI key and bot steps of the wizard, Telegram text capture, Ingest now with link fetching, and the release pipeline. Voice and photos are not in it yet.
+So far it has the tray, the folder, OpenAI key and bot steps of the wizard, Telegram text capture, Ingest now with link fetching, an opt-in git remote for backup, and the release pipeline. Voice and photos are not in it yet.
 
 ## Download
 
@@ -53,7 +53,9 @@ If FUSE is unavailable, `APPIMAGE_EXTRACT_AND_RUN=1 ./Second-Brain-*-x86_64.AppI
 
 ## First launch
 
-The app sits in the menu bar on Mac and in the system tray on Windows and Linux. The menu shows the folder, Ingest now, Connect Telegram… until a bot is connected, and Quit.
+The app sits in the menu bar on Mac and in the system tray on Windows and Linux. The menu shows the folder, Ingest now, Connect Telegram… until a bot is connected, Backup remote…, and Quit.
+
+Backup remote… takes a git remote URL. After each Ingest the app pushes to it, last and best-effort. A failed push rolls nothing back: the menu shows "Backup push failed", the app notifies once, and the next Ingest pushes again. Save a blank URL to stop pushing.
 
 The first window asks for a folder, then an OpenAI API key. The wizard checks the key with one call and stores it in the OS keychain. The default folder is `Documents/Second Brain`. Create makes that folder, without a git install on the computer (git is bundled):
 

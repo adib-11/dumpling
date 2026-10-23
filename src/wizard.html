@@ -106,6 +106,24 @@
       </form>
       <p id="start" hidden></p>
     </section>
+    <section id="remote-step" hidden>
+      <h1>Back up to a git remote</h1>
+      <p>
+        Optional. After each Ingest the app pushes the folder to this remote. A failed push changes
+        nothing here; it shows in the tray. Leave it blank to stop pushing.
+      </p>
+      <form id="remote-form">
+        <label for="remote">Remote URL</label>
+        <div class="row">
+          <input id="remote" name="remote" type="text" spellcheck="false" autocomplete="off" />
+        </div>
+        <p id="remote-current"></p>
+        <p id="remote-error" role="alert"></p>
+        <div class="actions">
+          <button type="submit" id="save-remote">Save</button>
+        </div>
+      </form>
+    </section>
     <script src="wizard.js"></script>
   </body>
 </html>
