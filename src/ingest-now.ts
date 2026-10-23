@@ -211,6 +211,30 @@ function listDumps(brain: string): string[] {
     .map((name) => `inbox/${name}`)
 }
 
+// Reverts the newest `ingest:` commit not reverted yet, which restores the wiki and puts its Dumps back in
+// inbox/. A revert that would touch a later edit is aborted, so it changes nothing.
+export async function undoLastIngest(
+  brain: string,
+): Promise<{ status: "ok" | "nothing" | "failed" | "already-running"; reason?: string }> {
+  const lock = path.resolve(brain)
+  if (running.has(lock)) return { status: "already-running" }
+  running.add(lock)
+  try {
+    await commitOwnerEdits(brain)
+    const reverted = await exec(["log", "--format=%b", "--grep=^This reverts commit "], brain)
+    const done = new Set([...reverted.stdout.matchAll(/This reverts commit ([0-9a-f]+)/g)].map((m) => m[1]))
+    const ingests = await exec(["log", "--format=%H", "--grep=^ingest: "], brain)
+    const last = ingests.stdout.split("\n").find((sha) => sha !== "" && !done.has(sha))
+    if (!last) return { status: "nothing" }
+    const result = await exec(["revert", "--no-edit", "--no-gpg-sign", last], brain, { env: gitEnv() })
+    if (result.exitCode === 0) return { status: "ok" }
+    await exec(["revert", "--abort"], brain)
+    return { status: "failed", reason: result.stderr || result.stdout || "git revert failed" }
+  } finally {
+    running.delete(lock)
+  }
+}
+
 function stemOf(dump: string): string {
   return path.posix.basename(dump, ".md")
 }
