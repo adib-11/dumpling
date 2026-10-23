@@ -136,10 +136,11 @@ async function capture(
 }
 
 function largestPhoto(photos: TelegramFile[] | undefined): TelegramFile | undefined {
-  if (!photos?.length) return undefined
-  return photos.reduce((best, photo) =>
-    (photo.file_size ?? photo.width ?? 0) >= (best.file_size ?? best.width ?? 0) ? photo : best,
-  )
+  let best: TelegramFile | undefined
+  for (const photo of photos ?? []) {
+    if (!best || (photo.file_size ?? photo.width ?? 0) >= (best.file_size ?? best.width ?? 0)) best = photo
+  }
+  return best
 }
 
 function imageDocument(message: TelegramMessage): TelegramFile | undefined {
