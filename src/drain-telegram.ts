@@ -30,11 +30,9 @@ export async function drainTelegram(
     // so the drain never sees them again; the Owner resends them once they are supported.
     if (message?.chat.id !== chat || !message.text) continue
     if (/^\/ask\b/.test(message.text)) {
-      if (ask) {
-        // Answered before the offset confirms, so a crash re-asks rather than losing the question.
-        await answerQuestion(bot, chat, message.text, ask)
-        toDelete.push(message.message_id)
-      }
+      // Answered before the offset confirms, so a crash re-asks rather than losing the question.
+      await answerQuestion(bot, chat, message.text, ask)
+      toDelete.push(message.message_id)
       continue
     }
     toDelete.push(message.message_id)
@@ -94,11 +92,15 @@ export async function pollTelegram(
 
 // Answers one /ask message in the chat. A question the app cannot answer still gets a reply, so it never
 // quietly disappears; the question is then deleted from the chat like a Dump.
-async function answerQuestion(bot: Bot, chat: number, text: string, ask: Asker): Promise<void> {
+async function answerQuestion(bot: Bot, chat: number, text: string, ask: Asker | undefined): Promise<void> {
   const question = text.replace(/^\/ask\s*/, "").trim()
   try {
     if (question === "") {
       await sendAnswer(bot, chat, "Add a question after /ask.")
+      return
+    }
+    if (!ask) {
+      await sendAnswer(bot, chat, "Could not answer that.")
       return
     }
     let answer: string

@@ -194,7 +194,7 @@ test("an /ask message is answered in the chat and never becomes a Dump", async (
   assert.equal(status.stdout, "")
 })
 
-test("an /ask message without an asker is still never a Dump", async (t) => {
+test("an /ask message without an asker still never becomes a Dump, and says so", async (t) => {
   const { folder, api, bot } = await setup()
   t.after(api.close)
   api.updates = [message(1, 10, at, { text: "/ask what do I think about X?" })]
@@ -202,7 +202,14 @@ test("an /ask message without an asker is still never a Dump", async (t) => {
   await drainTelegram(bot, folder, 111)
 
   assert.deepEqual(inbox(folder), [])
-  assert.equal(api.calls.some((call) => call.method === "deleteMessage"), false)
+  assert.deepEqual(
+    api.calls.filter((call) => call.method === "sendMessage").map((call) => call.params),
+    [{ chat_id: 111, text: "Could not answer that." }],
+  )
+  assert.deepEqual(
+    api.calls.filter((call) => call.method === "deleteMessage").map((call) => call.params),
+    [{ chat_id: 111, message_id: 10 }],
+  )
 })
 
 test("a failed ask gets a short reply, and the batch still confirms", async (t) => {

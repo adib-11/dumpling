@@ -29,14 +29,15 @@ export async function askQuestion(options: {
     cwd: options.brain,
   })
   if (run.code !== 0) return { status: "failed", reason: `runner exited ${run.code}` }
-  const answer = answerOf(run.stdout)
+  const answer = answerFromStdout(run.stdout)
   if (answer.trim() === "") return { status: "failed", reason: "the runner returned no answer" }
   return { status: "ok", answer }
 }
 
-// The answer is every finished text part opencode streamed, in order. The Owner's question is
-// never a text event: it carries no time.end, which is what marks a part as the assistant's.
-function answerOf(stdout: string): string {
+// opencode streams one JSON event per line and emits only finished assistant text parts: a part must
+// carry a time.end to be emitted, and the user's prompt part never gets one, so every text event here
+// is a piece of the answer.
+function answerFromStdout(stdout: string): string {
   const parts: string[] = []
   for (const line of stdout.split("\n")) {
     if (line.trim() === "") continue
