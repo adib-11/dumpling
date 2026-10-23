@@ -1,8 +1,13 @@
 // The Owner's own Telegram bot, through the Bot API.
 
-export type Bot = (method: string, params?: Record<string, unknown>, signal?: AbortSignal) => Promise<any>
+export type Bot = (method: string, params?: Record<string, unknown>, signal?: AbortSignal) => Promise<unknown>
 
-export const longPoll = 25 // seconds
+export type Update = {
+  update_id: number
+  message?: { message_id: number; date: number; chat: { id: number; type: string }; text?: string }
+}
+
+export const longPollSeconds = 25
 
 export function telegramBot(token: string, base = "https://api.telegram.org"): Bot {
   // The token goes in the URL path, so only the BotFather shape is let through.
@@ -22,13 +27,11 @@ export function telegramBot(token: string, base = "https://api.telegram.org"): B
   }
 }
 
-type Update = { update_id: number; message?: { chat: { id: number; type: string }; text?: string } }
-
 // Waits for the Owner's /start in a private chat and returns that chat, the only one the app accepts.
 export async function connectBot(bot: Bot, stop: AbortSignal): Promise<number> {
   let offset: number | undefined
   for (;;) {
-    const updates = (await bot("getUpdates", { offset, timeout: longPoll }, stop)) as Update[]
+    const updates = (await bot("getUpdates", { offset, timeout: longPollSeconds }, stop)) as Update[]
     for (const { update_id, message } of updates) {
       offset = update_id + 1
       if (message?.chat.type !== "private" || !/^\/start\b/.test(message.text ?? "")) continue

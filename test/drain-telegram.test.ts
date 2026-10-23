@@ -92,15 +92,6 @@ test("the next poll confirms the offset, which is never stored", async (t) => {
   )
 })
 
-function files(folder: string): string[] {
-  return fs
-    .readdirSync(folder, { recursive: true, withFileTypes: true })
-    .filter((entry) => entry.isFile())
-    .map((entry) => path.relative(folder, path.join(entry.parentPath, entry.name)).split(path.sep).join("/"))
-    .filter((name) => !name.startsWith(".git/"))
-    .sort()
-}
-
 test("a message already in a Dump is not saved twice, in inbox/ or filed", async (t) => {
   const { folder, api, bot } = await setup()
   t.after(api.close)
@@ -165,4 +156,44 @@ test("polling keeps going after a failed poll and saves new messages as they arr
 async function until(done: () => boolean): Promise<void> {
   for (let i = 0; i < 200 && !done(); i++) await new Promise((resolve) => setTimeout(resolve, 10))
   assert.ok(done())
+}
+
+test("a new bot's message is saved even when an old Dump has the same message id", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  const filed = path.join(folder, "vault/raw/2026/10")
+  fs.mkdirSync(filed, { recursive: true })
+  fs.writeFileSync(path.join(filed, "2026-10-01-080000-telegram.md"), "---\ntelegram_message_id: 2\n---\nold\n")
+  api.updates = [message(1, 2, at, { text: "new" })]
+
+  await drainTelegram(bot, folder, 111)
+
+  assert.deepEqual(inbox(folder), ["2026-10-21-140000-telegram.md"])
+})
+
+test("Dumps a failed commit left behind go in the next drain commit, and nothing else does", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  fs.writeFileSync(path.join(folder, "inbox", "2026-10-21-130000-telegram.md"), "---\ntelegram_message_id: 9\n---\nearlier\n")
+  fs.writeFileSync(path.join(folder, "AGENTS.md"), "edited by the Owner\n")
+  api.updates = [message(1, 10, at, { text: "one" })]
+
+  await drainTelegram(bot, folder, 111)
+
+  const log = await exec(["log", "-1", "--format=%s", "--name-only"], folder)
+  assert.deepEqual(log.stdout.trim().split("\n"), [
+    "drain: 2 Dumps",
+    "",
+    "inbox/2026-10-21-130000-telegram.md",
+    "inbox/2026-10-21-140000-telegram.md",
+  ])
+})
+
+function files(folder: string): string[] {
+  return fs
+    .readdirSync(folder, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => path.relative(folder, path.join(entry.parentPath, entry.name)).split(path.sep).join("/"))
+    .filter((name) => !name.startsWith(".git/"))
+    .sort()
 }

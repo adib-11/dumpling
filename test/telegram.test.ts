@@ -8,6 +8,8 @@ import { drainTelegram } from "../src/drain-telegram"
 import { connectBot, telegramBot } from "../src/telegram"
 import { fakeBotApi, message } from "./fake-bot-api"
 
+process.env.TZ = "Asia/Dhaka"
+
 test("a malformed token is refused, and a token never appears in an error", async (t) => {
   const api = await fakeBotApi()
   t.after(api.close)
@@ -20,7 +22,7 @@ test("a malformed token is refused, and a token never appears in an error", asyn
   assert.equal(api.calls.length, 1)
 })
 
-test("the first /start in a private chat connects that chat, and is not saved as a Dump", async (t) => {
+test("the first /start in a private chat connects that chat; the /start is not saved, what follows is", async (t) => {
   const api = await fakeBotApi()
   t.after(api.close)
   const bot = telegramBot(api.token, api.url)
@@ -28,6 +30,7 @@ test("the first /start in a private chat connects that chat, and is not saved as
     { update_id: 1, message: { message_id: 5, date: 1792569600, chat: { id: -100, type: "group" }, text: "/start" } },
     message(2, 6, 1792569600, { text: "hello" }, 222),
     message(3, 7, 1792569660, { text: "/start" }, 111),
+    message(4, 8, 1792569720, { text: "first thought" }, 111),
   ]
 
   const chat = await connectBot(bot, new AbortController().signal)
@@ -38,5 +41,5 @@ test("the first /start in a private chat connects that chat, and is not saved as
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), "connect-"))
   await createSecondBrain(folder, path.join(__dirname, "..", "templates"))
   await drainTelegram(bot, folder, 111)
-  assert.deepEqual(fs.readdirSync(path.join(folder, "inbox")), [".gitkeep"])
+  assert.deepEqual(fs.readdirSync(path.join(folder, "inbox")), [".gitkeep", "2026-10-21-140200-telegram.md"])
 })

@@ -91,11 +91,12 @@ export async function git(
   args: string[],
   folder: string,
   env?: Record<string, string>,
-): Promise<void> {
+): Promise<string> {
   const result = await exec(args, folder, env ? { env } : undefined)
   if (result.exitCode !== 0) {
     throw new Error(`git ${args.join(" ")} failed: ${result.stderr || result.stdout}`)
   }
+  return result.stdout
 }
 
 function write(folder: string, relativePath: string, contents: string): void {

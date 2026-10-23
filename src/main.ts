@@ -44,6 +44,10 @@ function telegramConnected(): boolean {
   return readTelegramChat(configPath()) !== null && loadToken() !== null
 }
 
+function needsSetup(): boolean {
+  return !readBrainFolder(configPath()) || !telegramConnected()
+}
+
 function startPolling(): void {
   const folder = readBrainFolder(configPath())
   const chat = readTelegramChat(configPath())
@@ -150,7 +154,7 @@ function start(): void {
   }
 
   app.on("second-instance", () => {
-    if (!readBrainFolder(configPath()) || !telegramConnected()) openWizard()
+    if (needsSetup()) openWizard()
   })
 
   app.on("window-all-closed", () => {
@@ -191,18 +195,18 @@ function start(): void {
       rebuildMenu()
       return { ok: true as const, commit: created.commit }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not create the folder."
-      return { ok: false as const, error: message }
+      return { ok: false as const, error: errorMessage(error, "Could not create the folder.") }
     }
   })
 
   ipcMain.handle("wizard:open-botfather", () => shell.openExternal("https://t.me/BotFather"))
 
-  ipcMain.handle("wizard:check-token", async (_event, token: unknown) => {
+  ipcMain.handle("wizard:check-token", async (_event, pasted: unknown) => {
     try {
-      if (typeof token !== "string") throw new Error("Paste the bot token.")
-      const me = (await telegramBot(token.trim())("getMe")) as { username: string }
-      saveToken(token.trim())
+      if (typeof pasted !== "string") throw new Error("Paste the bot token.")
+      const token = pasted.trim()
+      const me = (await telegramBot(token)("getMe")) as { username: string }
+      saveToken(token)
       return { ok: true as const, username: me.username }
     } catch (error) {
       return { ok: false as const, error: errorMessage(error, "Could not check the token.") }
@@ -231,7 +235,7 @@ function start(): void {
     if (process.platform === "darwin") app.dock?.hide()
     createTray()
     startPolling()
-    if (!telegramConnected()) openWizard()
+    if (needsSetup()) openWizard()
   })
 }
 
