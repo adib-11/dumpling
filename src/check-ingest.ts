@@ -88,7 +88,7 @@ function lineProblems(brain: string, file: string, line: string): string[] {
     if (!src.includes(text)) {
       problems.push(`${file}: quote "${text}" is not word for word in ${dumpFile}; copy it exactly`)
     }
-    if (/\p{Script=Bengali}/u.test(text) && !found[2]) {
+    if (/\p{scx=Bengali}/u.test(text) && !found[2]) {
       problems.push(`${file}: quote "${text}" needs an [English gloss] right after it`)
     }
   }
