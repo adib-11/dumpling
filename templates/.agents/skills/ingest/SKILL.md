@@ -15,8 +15,7 @@ Rule ideas (triage dispositions, never rewriting history, cascade lookup, the gr
 - `bin/ingest` started you and is waiting for you to finish. Never run it or any other script, never run git, and never start a subagent: file the Dumps yourself with your file tools.
 - Never move, rename or delete a file. `bin/ingest` moves each Dump to `vault/raw/` and commits.
 - Never write in `inbox/` or `vault/raw/`. Never read `vault/private/`.
-- A Dump with `private: true` should never reach you. If one does, file it on no Page and log it as No material with `- Flags: private`.
-- Never edit `AGENTS.md` or a skill. Rule changes are proposed through the Digest only.
+- Never edit `AGENTS.md` or a skill. Rule changes are proposed in the daily message only.
 - Do not ask questions in this session. Nobody is watching the run. A Telegram Follow-up is one line appended to `vault/follow-ups.md`, which `bin/ingest` sends later. When unsure, follow the rule for "unsure" below and flag it in `log.md`.
 
 ## Steps
@@ -169,11 +168,10 @@ An Addendum adds a thought to an earlier Dump. It updates the Pages its original
 
 ## Telegram Follow-up
 
-A Telegram Dump is filed in this run like any other Dump. Separately, it may get one Follow-up: a question the Owner answers later, which comes back as an Addendum. Shortcuts Dumps (device `iphone` or `mac`) never get one.
+Every Dump is a Telegram Dump. It is filed in this run like any other Dump, and it may get one Follow-up: a question the Owner answers later, which comes back as an Addendum.
 
 Queue a line only when all of these are true:
 
-- `device: telegram`.
 - The Dump is about a work, a person or a topic: this run creates or updates a Page in `works/`, `people/` or `topics/` for it.
 - It has no evaluative words, so it yields no Take.
 - It yields no Open thread. A to-do never gets a question.
@@ -219,7 +217,7 @@ Append one entry per Dump, in filing order. If the file is empty, start it with 
 - The heading date is today's date; the title is the main Page the Dump went to.
 - `Disposition`: any of `New`, `Update`, `Disputed`, `Addendum`. `Raw` is always the Dump's name as a wikilink.
 - Omit `Created`, `Updated` or `Flags` when empty. For an Addendum, add `- Addendum to: [[<original>]]`, plus `(matched "re ...")` when matched by text.
-- Flags, exactly these words: `new tag <tag>`, `possible duplicate of [[<page>]]`, `unsure Take on [[<page>]]`, `disputed fact on [[<page>]]`, `unmatched "re ..."`, `unfetched link`, `private`.
+- Flags, exactly these words: `new tag <tag>`, `possible duplicate of [[<page>]]`, `unsure Take on [[<page>]]`, `disputed fact on [[<page>]]`, `unmatched "re ..."`, `unfetched link`.
 - A No material Dump gets this entry, nothing else:
 
   ```markdown

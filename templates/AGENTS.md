@@ -15,9 +15,6 @@ Use the vocabulary in `CONTEXT.md` (Owner, Dump, Inbox, Ingest, Page, Take, Open
 Each skill is a plain `SKILL.md` file. Read the file when its task comes up.
 
 - ingest: `.agents/skills/ingest/SKILL.md`
-- digest: `.agents/skills/digest/SKILL.md`
 - ask: `.agents/skills/ask/SKILL.md`
-- review: `.agents/skills/review/SKILL.md`
-- voice: `.agents/skills/voice/SKILL.md`
 
 

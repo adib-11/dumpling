@@ -26,7 +26,7 @@ test("the default folder is Documents/Second Brain", () => {
 
 test("createSecondBrain writes the v1 layout and fixed wiki files", async () => {
   const folder = tempFolder()
-  await createSecondBrain(folder, { templatesDir })
+  await createSecondBrain(folder, templatesDir)
 
   const index = [
     "# Index",
@@ -92,7 +92,7 @@ test("createSecondBrain writes the v1 layout and fixed wiki files", async () => 
 
 test("createSecondBrain copies the app-owned templates and records the source commit", async () => {
   const folder = tempFolder()
-  await createSecondBrain(folder, { templatesDir })
+  await createSecondBrain(folder, templatesDir)
 
   for (const name of ["AGENTS.md", "CONTEXT.md", "opencode.json"]) {
     assert.equal(
@@ -100,7 +100,7 @@ test("createSecondBrain copies the app-owned templates and records the source co
       fs.readFileSync(path.join(templatesDir, name), "utf8"),
     )
   }
-  for (const skill of ["ask", "digest", "ingest", "review", "voice"]) {
+  for (const skill of ["ask", "ingest"]) {
     const relative = path.join(".agents", "skills", skill, "SKILL.md")
     assert.equal(
       fs.readFileSync(path.join(folder, relative), "utf8"),
@@ -112,6 +112,21 @@ test("createSecondBrain copies the app-owned templates and records the source co
     "a6bdf23909469797e94944e89b420a561af405c4",
   )
   const fences = JSON.parse(fs.readFileSync(path.join(folder, "opencode.json"), "utf8"))
+  const ingest = fs.readFileSync(path.join(folder, ".agents/skills/ingest/SKILL.md"), "utf8")
+  assert.match(ingest, /Every Dump is a Telegram Dump/)
+  assert.match(ingest, /Rule changes are proposed in the daily message only/)
+  assert.doesNotMatch(ingest, /Shortcuts/)
+  assert.doesNotMatch(ingest, /private: true/)
+  assert.doesNotMatch(ingest, /Digest/)
+
+  const ask = fs.readFileSync(path.join(folder, ".agents/skills/ask/SKILL.md"), "utf8")
+  assert.doesNotMatch(ask, /cloud session/)
+  assert.doesNotMatch(ask, /git-crypt/)
+
+  for (const dropped of ["digest", "review", "voice"]) {
+    assert.equal(fs.existsSync(path.join(folder, ".agents", "skills", dropped)), false)
+  }
+
   assert.equal(fences.share, "disabled")
   assert.deepEqual(fences.agent.ingest.permission.edit, {
     "*": "deny",
@@ -151,7 +166,7 @@ test("createSecondBrain makes a first commit with the bundled git", async () => 
   delete process.env.GIT_COMMITTER_EMAIL
 
   try {
-    const created = await createSecondBrain(folder, { templatesDir })
+    const created = await createSecondBrain(folder, templatesDir)
     assert.match(created.commit, /^[0-9a-f]{40}$/)
 
     const head = await exec(["rev-parse", "HEAD"], folder)
@@ -170,10 +185,7 @@ test("createSecondBrain makes a first commit with the bundled git", async () => 
     const tree = await exec(["ls-tree", "-r", "--name-only", "HEAD"], folder)
     assert.deepEqual(tree.stdout.trim().split("\n").sort(), [
       ".agents/skills/ask/SKILL.md",
-      ".agents/skills/digest/SKILL.md",
       ".agents/skills/ingest/SKILL.md",
-      ".agents/skills/review/SKILL.md",
-      ".agents/skills/voice/SKILL.md",
       ".gitignore",
       "AGENTS.md",
       "CONTEXT.md",
@@ -200,7 +212,7 @@ test("a failed create removes a folder it had just created", async () => {
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), "second-brain-fail-"))
   const folder = path.join(parent, "brain")
 
-  await assert.rejects(() => createSecondBrain(folder, { templatesDir: path.join(parent, "missing-templates") }))
+  await assert.rejects(() => createSecondBrain(folder, path.join(parent, "missing-templates")))
 
   assert.equal(fs.existsSync(folder), false)
 })
@@ -210,7 +222,7 @@ test("a failed create leaves an existing empty folder empty", async () => {
   const saved = process.env.LOCAL_GIT_DIRECTORY
   process.env.LOCAL_GIT_DIRECTORY = path.join(folder, "not-a-git")
   try {
-    await assert.rejects(() => createSecondBrain(folder, { templatesDir }))
+    await assert.rejects(() => createSecondBrain(folder, templatesDir))
   } finally {
     if (saved === undefined) delete process.env.LOCAL_GIT_DIRECTORY
     else process.env.LOCAL_GIT_DIRECTORY = saved
@@ -223,7 +235,7 @@ test("createSecondBrain refuses a folder that already has files", async () => {
   const folder = tempFolder()
   fs.writeFileSync(path.join(folder, "keep.txt"), "leave me\n")
 
-  await assert.rejects(() => createSecondBrain(folder, { templatesDir }), /not empty/)
+  await assert.rejects(() => createSecondBrain(folder, templatesDir), /not empty/)
 
   assert.equal(fs.readFileSync(path.join(folder, "keep.txt"), "utf8"), "leave me\n")
   assert.equal(fs.readdirSync(folder).sort().join(","), "keep.txt")

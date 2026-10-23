@@ -25,12 +25,16 @@ Draft installers are attached to a draft GitHub Release. The release workflow ru
 
 The build is ad-hoc signed (`codesign` identity `-`, hardened runtime off). It is not notarized. If macOS says the app is damaged, the download was blocked before it could be ad-hoc signed; do not right-click past that, and use a build whose signature is ad-hoc.
 
+A screenshot of the Privacy & Security prompt is not in this README yet.
+
 ### Windows
 
 1. Run the installer.
 2. If SmartScreen appears, choose More info, then Run anyway.
 
 The installer is unsigned. There is no Authenticode certificate.
+
+A screenshot of the SmartScreen prompt is not in this README yet.
 
 ### Linux
 
@@ -39,10 +43,10 @@ chmod +x Second-Brain-*-x86_64.AppImage
 ./Second-Brain-*-x86_64.AppImage
 ```
 
-On GNOME the tray icon uses AppIndicator. Install and enable the AppIndicator extension (Ubuntu's "Ubuntu AppIndicators" extension, or "AppIndicator and KStatusNotifierItem Support"). Plain Ubuntu may also need `libfuse2` before an AppImage will start:
+On GNOME the tray icon uses AppIndicator. The AppImage ships `libappindicator`. Install and enable the AppIndicator extension (Ubuntu's "Ubuntu AppIndicators" extension, or "AppIndicator and KStatusNotifierItem Support"). Plain Ubuntu also needs FUSE (`fusermount` from the `fuse` package, and `libfuse2`) before a normal AppImage mount will start:
 
 ```sh
-sudo apt install libfuse2
+sudo apt install fuse libfuse2
 ```
 
 If FUSE is unavailable, `APPIMAGE_EXTRACT_AND_RUN=1 ./Second-Brain-*-x86_64.AppImage` still starts it.

@@ -5,7 +5,7 @@ description: Answer a Recall or Persona question from vault/wiki/, citing repo p
 
 # Ask
 
-Answer one question from `vault/wiki/`. These rules are spec §8 (`docs/spec/v1.md`); this file is the working copy. On the Mac, the Owner runs it from this repo with opencode (`--agent ask`) or Claude Code. On the iPhone, a Claude Code cloud session on this repo runs the same skill against the vault as last pushed. One new session per question; follow-ups to that question stay in the session.
+Answer one question from `vault/wiki/`. These rules are spec §8 (`docs/spec/v1.md`); this file is the working copy. Run it with opencode (`--agent ask`).
 
 The evidence ladder adapts soul.md's source priority (`aeonfun/soul.md` `SKILL.md` at commit `bada2485099752e73c08c9906d75b8d7ca7d58de`, MIT). The correction log adapts write-like-me's learning loop (`sheryldeakin/write-like-me` `docs/learning-loop.md` at commit `b52802ee453b9486930f59a5a79121694c9b2a0d`, MIT).
 
@@ -13,8 +13,8 @@ The evidence ladder adapts soul.md's source priority (`aeonfun/soul.md` `SKILL.m
 
 - Write nothing into the wiki. A Persona answer is never a Page, a Take, or a `log.md` line.
 - The only files you may write are `persona/corrections.md` and `persona/STYLE.md` when a correction is promoted. A promoted rule may create `persona/STYLE.md`. Do not write a voice guide into it.
-- Never commit, never push, never `git add`. A cloud session must not push.
-- Never read `vault/private/`. Recall and Persona do not see a Private Dump. Do not open it, grep it, or cite it. In the cloud those files are git-crypt ciphertext. Do not decrypt them, and do not run `git-crypt`.
+- Never commit, never push, never `git add`.
+- Never read `vault/private/`. Recall and Persona do not see a Private Dump. Do not open it, grep it, or cite it.
 - Never add general knowledge. No staleness warning.
 - Do not start a subagent. Do not fetch the web. Do not load any skill but this one. Read files, grep with the harness's built-in grep, and run only `git log -1 --format=%cs -- vault/wiki`. No other shell command.
 

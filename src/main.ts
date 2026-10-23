@@ -12,14 +12,9 @@ function configPath(): string {
   return path.join(app.getPath("userData"), "config.json")
 }
 
-function templatesDir(): string {
-  if (app.isPackaged) return path.join(process.resourcesPath, "templates")
-  return path.join(__dirname, "..", "templates")
-}
-
-function iconFile(): string {
-  if (app.isPackaged) return path.join(process.resourcesPath, "assets", "icon.png")
-  return path.join(__dirname, "..", "assets", "icon.png")
+function resourcePath(...parts: string[]): string {
+  const root = app.isPackaged ? process.resourcesPath : path.join(__dirname, "..")
+  return path.join(root, ...parts)
 }
 
 function enableLogin(): void {
@@ -27,7 +22,11 @@ function enableLogin(): void {
   try {
     if (process.platform === "linux") {
       const configHome = process.env.XDG_CONFIG_HOME || path.join(app.getPath("home"), ".config")
-      enableLinuxAutostart(configHome, process.env.APPIMAGE || process.execPath)
+      enableLinuxAutostart(
+        configHome,
+        process.env.APPIMAGE || process.execPath,
+        process.env.APPIMAGE_EXTRACT_AND_RUN === "1",
+      )
       return
     }
     app.setLoginItemSettings({ openAtLogin: true })
@@ -86,8 +85,9 @@ function rebuildMenu(): void {
 }
 
 function createTray(): void {
-  const image = nativeImage.createFromPath(iconFile()).resize({ width: 22, height: 22 })
-  if (image.isEmpty()) throw new Error(`Tray icon is missing or unreadable: ${iconFile()}`)
+  const icon = resourcePath("assets", "icon.png")
+  const image = nativeImage.createFromPath(icon).resize({ width: 22, height: 22 })
+  if (image.isEmpty()) throw new Error(`Tray icon is missing or unreadable: ${icon}`)
   if (process.platform === "darwin") image.setTemplateImage(true)
   tray = new Tray(image)
   if (process.platform !== "darwin") {
@@ -140,7 +140,7 @@ function start(): void {
     }
     const chosen = folder.trim()
     try {
-      const created = await createSecondBrain(chosen, { templatesDir: templatesDir() })
+      const created = await createSecondBrain(chosen, resourcePath("templates"))
       writeBrainFolder(configPath(), chosen)
       rebuildMenu()
       wizard?.close()

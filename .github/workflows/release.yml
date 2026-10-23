@@ -64,7 +64,7 @@ jobs:
       - name: Collect installers
         run: |
           mkdir -p dist-upload
-          find artifacts -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' -o -name '*.AppImage' \) -exec cp {} dist-upload/ \;
+          find artifacts -type f -exec cp {} dist-upload/ \;
           find dist-upload -type f -print
           test "$(find dist-upload -type f | wc -l)" -ge 4
       - uses: softprops/action-gh-release@v2
