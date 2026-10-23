@@ -59,7 +59,6 @@ export async function ingestNow(options: {
   runner: AgentRunner
   today?: string
   now?: Date
-  model?: string
 }): Promise<IngestResult> {
   // ponytail: one lock directory per brain in tmp. A crash holds it until reboot.
   const lockDir = path.join(
@@ -75,7 +74,6 @@ export async function ingestNow(options: {
 
   const now = options.now ?? new Date()
   const today = options.today ?? localDate(now)
-  const model = options.model ?? "gpt-5.6-luna"
   let status: IngestResult["status"] = "ok"
   let dumpsFiled = 0
   let cost = 0
@@ -99,7 +97,7 @@ export async function ingestNow(options: {
           const secret = options.apiKey.trim()
           const safePrompt = secret === "" ? prompt : prompt.split(secret).join("[redacted]")
           const run = await options.runner({
-            args: ["run", "-m", `openai/${model}`, "--agent", "ingest", "--format", "json", safePrompt],
+            args: ["run", "-m", "openai/gpt-5.6-luna", "--agent", "ingest", "--format", "json", safePrompt],
             env: { ...process.env, OPENAI_API_KEY: options.apiKey },
             cwd: options.brain,
           })
@@ -200,14 +198,7 @@ async function stashChunk(brain: string, now: Date): Promise<void> {
   const stashed = await exec(
     ["stash", "push", "-q", "-u", "-m", `failed ingest ${stamp}`, "--", ".", ":!inbox"],
     brain,
-    {
-      env: {
-        GIT_AUTHOR_NAME: gitName,
-        GIT_AUTHOR_EMAIL: gitEmail,
-        GIT_COMMITTER_NAME: gitName,
-        GIT_COMMITTER_EMAIL: gitEmail,
-      },
-    },
+    { env: gitEnv() },
   )
   if (stashed.exitCode !== 0) throw new Error(stashed.stderr || stashed.stdout || "git stash failed")
 }
@@ -218,13 +209,17 @@ async function wikiChanged(brain: string): Promise<boolean> {
   return result.stdout.trim().length > 0
 }
 
-async function commit(brain: string, message: string): Promise<void> {
-  const env = {
+function gitEnv(): Record<string, string> {
+  return {
     GIT_AUTHOR_NAME: gitName,
     GIT_AUTHOR_EMAIL: gitEmail,
     GIT_COMMITTER_NAME: gitName,
     GIT_COMMITTER_EMAIL: gitEmail,
   }
+}
+
+async function commit(brain: string, message: string): Promise<void> {
+  const env = gitEnv()
   const added = await exec(["add", "--", "inbox", "vault"], brain, { env })
   if (added.exitCode !== 0) throw new Error(added.stderr || "git add failed")
   const committed = await exec(["commit", "-m", message, "--no-gpg-sign"], brain, { env })

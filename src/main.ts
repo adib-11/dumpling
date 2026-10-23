@@ -150,12 +150,10 @@ async function ingestFromTray(): Promise<void> {
       apiKey,
       runner: (run) => spawnOpencode(bin, run),
     })
-    if (result.status === "failed") {
-      dialog.showErrorBox("Second Brain", redact(result.reason ?? "Ingest failed.", apiKey))
-    }
+    if (result.status === "failed") console.error(redact(result.reason ?? "Ingest failed.", apiKey))
   } catch (error) {
     const message = error instanceof Error ? error.message : "Ingest failed."
-    dialog.showErrorBox("Second Brain", redact(message, apiKey))
+    console.error(redact(message, apiKey))
   }
 }
 

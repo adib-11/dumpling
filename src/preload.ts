@@ -1,7 +1,8 @@
 import { contextBridge, ipcRenderer } from "electron"
+import type { KeyResult } from "./api-key"
 
+export type { KeyResult }
 export type WizardResult = { ok: true; commit: string } | { ok: false; error: string }
-export type KeyResult = { ok: true } | { ok: false; error: string }
 
 contextBridge.exposeInMainWorld("wizard", {
   start: (): Promise<"folder" | "key"> => ipcRenderer.invoke("wizard:start"),
