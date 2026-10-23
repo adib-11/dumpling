@@ -1,18 +1,24 @@
 export type TrayMenuItem = {
   label: string
-  action?: "setup" | "ingest" | "undo" | "quit"
+  action?: "setup" | "ingest" | "undo" | "remote" | "quit"
   enabled: boolean
 }
 
-export function trayMenuItems(brainFolder: string | null, telegramConnected: boolean): TrayMenuItem[] {
+export function trayMenuItems(
+  brainFolder: string | null,
+  telegramConnected: boolean,
+  backupFailed = false,
+): TrayMenuItem[] {
   if (brainFolder) {
     return [
       { label: brainFolder, enabled: false },
+      ...(backupFailed ? [{ label: "Backup push failed", enabled: false }] : []),
       { label: "Ingest now", action: "ingest", enabled: true },
       { label: "Undo last Ingest", action: "undo", enabled: true },
       ...(telegramConnected
         ? []
         : [{ label: "Connect Telegram…", action: "setup" as const, enabled: true }]),
+      { label: "Backup remote…", action: "remote", enabled: true },
       { label: "Quit", action: "quit", enabled: true },
     ]
   }

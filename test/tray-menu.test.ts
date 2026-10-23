@@ -12,6 +12,7 @@ test("the tray menu quits, and offers setup until a folder is chosen", () => {
     { label: "/home/ada/Documents/Second Brain", enabled: false },
     { label: "Ingest now", action: "ingest", enabled: true },
     { label: "Undo last Ingest", action: "undo", enabled: true },
+    { label: "Backup remote…", action: "remote", enabled: true },
     { label: "Quit", action: "quit", enabled: true },
   ])
 })
@@ -22,6 +23,18 @@ test("the tray menu offers to connect Telegram until a chat is connected", () =>
     { label: "Ingest now", action: "ingest", enabled: true },
     { label: "Undo last Ingest", action: "undo", enabled: true },
     { label: "Connect Telegram…", action: "setup", enabled: true },
+    { label: "Backup remote…", action: "remote", enabled: true },
+    { label: "Quit", action: "quit", enabled: true },
+  ])
+})
+
+test("the tray menu shows a failed backup push", () => {
+  assert.deepEqual(trayMenuItems("/home/ada/Documents/Second Brain", true, true), [
+    { label: "/home/ada/Documents/Second Brain", enabled: false },
+    { label: "Backup push failed", enabled: false },
+    { label: "Ingest now", action: "ingest", enabled: true },
+    { label: "Undo last Ingest", action: "undo", enabled: true },
+    { label: "Backup remote…", action: "remote", enabled: true },
     { label: "Quit", action: "quit", enabled: true },
   ])
 })

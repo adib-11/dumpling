@@ -10,11 +10,16 @@ const saveKey = document.getElementById("save-key")
 const botError = document.getElementById("bot-error")
 const check = document.getElementById("check")
 const start = document.getElementById("start")
+const remoteStep = document.getElementById("remote-step")
+const remoteInput = document.getElementById("remote")
+const remoteError = document.getElementById("remote-error")
+const saveRemote = document.getElementById("save-remote")
 
 function show(step) {
   folderStep.hidden = step !== "folder"
   keyStep.hidden = step !== "key"
   botStep.hidden = step !== "bot"
+  remoteStep.hidden = step !== "remote"
 }
 
 window.wizard.start().then((step) => {
@@ -23,6 +28,22 @@ window.wizard.start().then((step) => {
     window.wizard.defaultFolder().then((folder) => {
       input.value = folder
     })
+  }
+  if (step === "remote") {
+    window.wizard.backupRemote().then((set) => {
+      document.getElementById("remote-current").textContent = set ? "A remote is set." : "No remote is set."
+    })
+  }
+})
+
+document.getElementById("remote-form").addEventListener("submit", async (event) => {
+  event.preventDefault()
+  remoteError.textContent = ""
+  saveRemote.disabled = true
+  const result = await window.wizard.saveRemote(remoteInput.value)
+  if (!result.ok) {
+    remoteError.textContent = result.error
+    saveRemote.disabled = false
   }
 })
 

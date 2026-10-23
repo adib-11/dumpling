@@ -5,6 +5,7 @@ import { exec } from "dugite"
 import { lockBrain } from "./brain-lock"
 import { checkIngest } from "./check-ingest"
 import { commitNewDumps } from "./drain-telegram"
+import { pushBackup, type PushResult } from "./git-remote"
 import { writeIndex } from "./write-index"
 
 const gitName = "Second Brain"
@@ -27,6 +28,7 @@ export type IngestResult = {
   dumps: number
   cost: number
   reason?: string
+  push?: PushResult
 }
 
 type SpawnLike = (
@@ -196,7 +198,9 @@ export async function ingestNow(options: {
     }
 
     record(options.brain, now, [status, dumpsFiled, cost.toFixed(4), check, stash ?? "", reason ?? ""])
-    return { status, dumps: dumpsFiled, cost, reason }
+    // Last and best-effort: a failed push rolls nothing back, and the next Ingest pushes again.
+    const pushed = await pushBackup(options.brain)
+    return { status, dumps: dumpsFiled, cost, reason, ...(pushed && { push: pushed }) }
   } finally {
     unlock()
   }
