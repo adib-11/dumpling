@@ -4,6 +4,14 @@ import { git } from "./create-second-brain"
 import { longPollSeconds, type Bot, type Update } from "./telegram"
 
 // Turns the Owner's Telegram messages into Dumps in inbox/, following bin/drain-telegram (spec §5).
+// A message starting with /ask is a question, not a Dump: it is answered in the chat (spec §4).
+
+// Answers one question with the ask skill's reply, or throws. Kept a callback so the drain stays
+// testable without opencode.
+export type Asker = (question: string) => Promise<string>
+
+// Telegram caps one message at 4096 characters; split answers a little under that.
+const telegramMessageChars = 4000
 
 // Returns the offset for the next poll, which confirms this batch. The offset is never stored: after a quiet
 // week update ids may jump, and a restart simply gets the unconfirmed updates again.
@@ -12,6 +20,7 @@ export async function drainTelegram(
   folder: string,
   chat: number,
   offset?: number,
+  ask?: Asker,
 ): Promise<number | undefined> {
   const updates = (await bot("getUpdates", { offset, timeout: longPollSeconds })) as Update[]
   const known = updates.length ? savedMessages(folder) : new Set<string>()
@@ -20,6 +29,14 @@ export async function drainTelegram(
     // ponytail: only text is captured. Voice, photos and files stay visible in the chat but are confirmed,
     // so the drain never sees them again; the Owner resends them once they are supported.
     if (message?.chat.id !== chat || !message.text) continue
+    if (/^\/ask\b/.test(message.text)) {
+      if (ask) {
+        // Answered before the offset confirms, so a crash re-asks rather than losing the question.
+        await answerQuestion(bot, chat, message.text, ask)
+        toDelete.push(message.message_id)
+      }
+      continue
+    }
     toDelete.push(message.message_id)
     // Keyed on the text too: a newly connected bot numbers its messages from 1 again.
     if (known.has(`${message.message_id}\n${message.text}`)) continue
@@ -61,17 +78,66 @@ export async function pollTelegram(
   folder: string,
   chat: number,
   stop: AbortSignal,
+  ask?: Asker,
   retryMs = 5000,
 ): Promise<void> {
   let offset: number | undefined
   while (!stop.aborted) {
     try {
-      offset = await drainTelegram(bot, folder, chat, offset)
+      offset = await drainTelegram(bot, folder, chat, offset, ask)
     } catch (error) {
       console.error("drain-telegram: poll failed", error)
       await new Promise((resolve) => setTimeout(resolve, retryMs))
     }
   }
+}
+
+// Answers one /ask message in the chat. A question the app cannot answer still gets a reply, so it never
+// quietly disappears; the question is then deleted from the chat like a Dump.
+async function answerQuestion(bot: Bot, chat: number, text: string, ask: Asker): Promise<void> {
+  const question = text.replace(/^\/ask\s*/, "").trim()
+  try {
+    if (question === "") {
+      await sendAnswer(bot, chat, "Add a question after /ask.")
+      return
+    }
+    let answer: string
+    try {
+      answer = await ask(question)
+    } catch (error) {
+      console.error("drain-telegram: ask failed", error)
+      await sendAnswer(bot, chat, "Could not answer that.")
+      return
+    }
+    await sendAnswer(bot, chat, answer)
+  } catch (error) {
+    // Telegram itself would not take the reply. The answer is lost; the Owner asks again.
+    console.error("drain-telegram: could not send the answer", error)
+  }
+}
+
+async function sendAnswer(bot: Bot, chat: number, text: string): Promise<void> {
+  for (const piece of splitMessage(text)) await bot("sendMessage", { chat_id: chat, text: piece })
+}
+
+function splitMessage(text: string): string[] {
+  if (text.length <= telegramMessageChars) return [text]
+  const pieces: string[] = []
+  let rest = text
+  while (rest.length > telegramMessageChars) {
+    // Prefer a line break, so a quote or citation is never cut mid-line. The break itself is dropped;
+    // sending the pieces in order reads the same as the whole answer.
+    const cut = rest.lastIndexOf("\n", telegramMessageChars)
+    if (cut >= telegramMessageChars / 2) {
+      pieces.push(rest.slice(0, cut))
+      rest = rest.slice(cut + 1)
+    } else {
+      pieces.push(rest.slice(0, telegramMessageChars))
+      rest = rest.slice(telegramMessageChars)
+    }
+  }
+  pieces.push(rest)
+  return pieces
 }
 
 // Commits every Dump not yet in git, including any a failed commit left behind, and nothing else.

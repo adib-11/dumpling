@@ -144,7 +144,7 @@ test("polling keeps going after a failed poll and saves new messages as they arr
   t.after(() => stop.abort())
   api.token = "999:other-token"
 
-  void pollTelegram(bot, folder, 111, stop.signal, 10)
+  void pollTelegram(bot, folder, 111, stop.signal, undefined, 10)
   await until(() => api.calls.length > 0)
   api.token = "123:secret-token"
   api.updates.push(message(1, 10, at, { text: "sent from the phone" }))
@@ -157,6 +157,156 @@ async function until(done: () => boolean): Promise<void> {
   for (let i = 0; i < 200 && !done(); i++) await new Promise((resolve) => setTimeout(resolve, 10))
   assert.ok(done())
 }
+
+test("an /ask message is answered in the chat and never becomes a Dump", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  api.updates = [message(1, 10, at, { text: "/ask what do I think about mechanical keyboards?" })]
+  const questions: string[] = []
+
+  const offset = await drainTelegram(bot, folder, 111, undefined, async (question) => {
+    questions.push(question)
+    return "Recall. You like them ([[mechanical-keyboards]]).\n\nFiled up to 2026-10-21"
+  })
+  await drainTelegram(bot, folder, 111, offset)
+
+  assert.deepEqual(questions, ["what do I think about mechanical keyboards?"])
+  assert.deepEqual(inbox(folder), [])
+  assert.deepEqual(
+    api.calls.filter((call) => call.method === "sendMessage").map((call) => call.params),
+    [
+      {
+        chat_id: 111,
+        text: "Recall. You like them ([[mechanical-keyboards]]).\n\nFiled up to 2026-10-21",
+      },
+    ],
+  )
+  // The reply lands before the question leaves the chat.
+  const methods = api.calls.map((call) => call.method)
+  assert.ok(methods.indexOf("sendMessage") < methods.lastIndexOf("deleteMessage"))
+  assert.deepEqual(
+    api.calls.filter((call) => call.method === "deleteMessage").map((call) => call.params),
+    [{ chat_id: 111, message_id: 10 }],
+  )
+  const log = await exec(["log", "--format=%s"], folder)
+  assert.equal(log.stdout.trim(), "create second brain")
+  const status = await exec(["status", "--porcelain"], folder)
+  assert.equal(status.stdout, "")
+})
+
+test("an /ask message without an asker is still never a Dump", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  api.updates = [message(1, 10, at, { text: "/ask what do I think about X?" })]
+
+  await drainTelegram(bot, folder, 111)
+
+  assert.deepEqual(inbox(folder), [])
+  assert.equal(api.calls.some((call) => call.method === "deleteMessage"), false)
+})
+
+test("a failed ask gets a short reply, and the batch still confirms", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  api.updates = [message(1, 10, at, { text: "/ask what do I know about Y?" })]
+
+  const offset = await drainTelegram(bot, folder, 111, undefined, async () => {
+    throw new Error("runner exited 1")
+  })
+  await drainTelegram(bot, folder, 111, offset)
+
+  assert.deepEqual(
+    api.calls.filter((call) => call.method === "sendMessage").map((call) => call.params),
+    [{ chat_id: 111, text: "Could not answer that." }],
+  )
+  assert.deepEqual(
+    api.calls.filter((call) => call.method === "deleteMessage").map((call) => call.params),
+    [{ chat_id: 111, message_id: 10 }],
+  )
+  assert.deepEqual(inbox(folder), [])
+})
+
+test("a bare /ask asks for a question without running the ask skill", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  api.updates = [message(1, 10, at, { text: "/ask" })]
+  let asked = false
+
+  await drainTelegram(bot, folder, 111, undefined, async () => {
+    asked = true
+    return "never sent"
+  })
+
+  assert.equal(asked, false)
+  assert.deepEqual(
+    api.calls.filter((call) => call.method === "sendMessage").map((call) => call.params),
+    [{ chat_id: 111, text: "Add a question after /ask." }],
+  )
+  assert.deepEqual(
+    api.calls.filter((call) => call.method === "deleteMessage").map((call) => call.params),
+    [{ chat_id: 111, message_id: 10 }],
+  )
+})
+
+test("an /ask from another chat is never answered or deleted", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  api.updates = [message(1, 10, at, { text: "/ask what does adib think?" }, 222)]
+  let asked = false
+
+  await drainTelegram(bot, folder, 111, undefined, async () => {
+    asked = true
+    return "never"
+  })
+
+  assert.equal(asked, false)
+  assert.equal(api.calls.some((call) => call.method === "sendMessage"), false)
+  assert.equal(api.calls.some((call) => call.method === "deleteMessage"), false)
+  assert.deepEqual(inbox(folder), [])
+})
+
+test("one batch can hold a Dump and a question", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  api.updates = [
+    message(1, 10, at, { text: "remember the milk" }),
+    message(2, 11, at + 60, { text: "/ask what do I think about milk?" }),
+  ]
+  const questions: string[] = []
+
+  const offset = await drainTelegram(bot, folder, 111, undefined, async (question) => {
+    questions.push(question)
+    return "Recall. You buy it ([[milk]]).\n\nFiled up to 2026-10-21"
+  })
+  await drainTelegram(bot, folder, 111, offset)
+
+  assert.deepEqual(questions, ["what do I think about milk?"])
+  assert.deepEqual(inbox(folder), ["2026-10-21-140000-telegram.md"])
+  const log = await exec(["log", "--format=%s"], folder)
+  assert.deepEqual(log.stdout.trim().split("\n"), ["drain: 1 Dumps", "create second brain"])
+  assert.deepEqual(
+    api.calls.filter((call) => call.method === "deleteMessage").map((call) => call.params),
+    [
+      { chat_id: 111, message_id: 10 },
+      { chat_id: 111, message_id: 11 },
+    ],
+  )
+})
+
+test("an answer longer than one Telegram message is sent in pieces", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  api.updates = [message(1, 10, at, { text: "/ask show me everything about keyboards" })]
+  const line = "a line of the answer, quoted from a Dump, with its citation\n"
+  const answer = `Recall.\n${line.repeat(100)}Filed up to 2026-10-21`
+
+  await drainTelegram(bot, folder, 111, undefined, async () => answer)
+
+  const sent = api.calls.filter((call) => call.method === "sendMessage").map((call) => call.params)
+  assert.equal(sent.length, 2)
+  assert.ok(sent.every((call) => (call.text as string).length <= 4096))
+  assert.equal(sent.map((call) => call.text as string).join("\n"), answer)
+})
 
 test("a new bot's message is saved even when an old Dump has the same message id", async (t) => {
   const { folder, api, bot } = await setup()

@@ -2,9 +2,10 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, s
 import fs from "node:fs"
 import path from "node:path"
 import { acceptApiKey, loadApiKey } from "./api-key"
+import { askQuestion } from "./ask"
 import { readBrainFolder, readTelegramChat, writeBrainFolder, writeTelegramChat } from "./brain-config"
 import { createSecondBrain, defaultSecondBrainFolder } from "./create-second-brain"
-import { pollTelegram } from "./drain-telegram"
+import { pollTelegram, type Asker } from "./drain-telegram"
 import { backupRemote, hideCredentials, setBackupRemote } from "./git-remote"
 import { ingestNow, spawnOpencode, type IngestResult } from "./ingest-now"
 import { enableLinuxAutostart } from "./login-item"
@@ -15,6 +16,7 @@ const openaiKeysUrl = "https://platform.openai.com/api-keys"
 
 let tray: Tray | null = null
 let wizard: BrowserWindow | null = null
+let askBox: BrowserWindow | null = null
 let connecting: AbortController | null = null
 let polling = false
 let wizardStep: "remote" | null = null
@@ -91,7 +93,24 @@ function startPolling(): void {
   const token = loadToken()
   if (polling || !folder || chat === null || !token) return
   polling = true
-  void pollTelegram(telegramBot(token), folder, chat, new AbortController().signal)
+  void pollTelegram(telegramBot(token), folder, chat, new AbortController().signal, asker())
+}
+
+// Answers one /ask question from Telegram by running the ask skill (spec §4).
+function asker(): Asker {
+  return async (question) => {
+    const folder = readBrainFolder(configPath())
+    const apiKey = storedKey()
+    if (!folder || !apiKey) throw new Error("The app is not set up.")
+    const result = await askQuestion({
+      brain: folder,
+      apiKey,
+      question,
+      runner: (run) => spawnOpencode(opencodeBin(), run),
+    })
+    if (result.status === "failed") throw new Error(result.reason)
+    return result.answer
+  }
 }
 
 function resourcePath(...parts: string[]): string {
@@ -149,7 +168,39 @@ function openWizard(step: "remote" | null = null): void {
     connecting?.abort()
     wizard = null
     wizardStep = null
-    if (process.platform === "darwin") app.dock?.hide()
+    if (process.platform === "darwin" && !askBox) app.dock?.hide()
+  })
+}
+
+function openAsk(): void {
+  if (setupStep()) {
+    openWizard()
+    return
+  }
+  if (askBox) {
+    askBox.show()
+    askBox.focus()
+    return
+  }
+  if (process.platform === "darwin") void app.dock?.show()
+  askBox = new BrowserWindow({
+    width: 560,
+    height: 520,
+    autoHideMenuBar: true,
+    title: "Ask",
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  })
+  askBox.webContents.setWindowOpenHandler(() => ({ action: "deny" }))
+  askBox.webContents.on("will-navigate", (event) => event.preventDefault())
+  void askBox.loadFile(path.join(__dirname, "ask.html"))
+  askBox.on("closed", () => {
+    askBox = null
+    if (process.platform === "darwin" && !wizard) app.dock?.hide()
   })
 }
 
@@ -164,11 +215,13 @@ function toMenuItem(item: TrayMenuItem): Electron.MenuItemConstructorOptions {
           ? () => openWizard()
           : item.action === "remote"
             ? () => openWizard("remote")
-            : item.action === "ingest"
-              ? () => {
-                  void ingestFromTray()
-                }
-              : undefined,
+            : item.action === "ask"
+              ? () => openAsk()
+              : item.action === "ingest"
+                ? () => {
+                    void ingestFromTray()
+                  }
+                : undefined,
   }
 }
 
@@ -259,6 +312,28 @@ function start(): void {
   })
 
   ipcMain.handle("wizard:start", () => wizardStep ?? setupStep() ?? "bot")
+
+  ipcMain.handle("ask:question", async (_event, question: unknown) => {
+    const folder = readBrainFolder(configPath())
+    const apiKey = storedKey()
+    if (typeof question !== "string" || question.trim() === "") {
+      return { ok: false as const, error: "Type a question." }
+    }
+    if (!folder || !apiKey) return { ok: false as const, error: "Set up the app first." }
+    try {
+      const result = await askQuestion({
+        brain: folder,
+        apiKey,
+        question: question.trim(),
+        runner: (run) => spawnOpencode(opencodeBin(), run),
+      })
+      return result.status === "ok"
+        ? { ok: true as const, answer: result.answer }
+        : { ok: false as const, error: result.reason }
+    } catch (error) {
+      return { ok: false as const, error: errorMessage(error, "Could not answer.") }
+    }
+  })
 
   ipcMain.handle("wizard:backup-remote", async () => {
     const folder = readBrainFolder(configPath())

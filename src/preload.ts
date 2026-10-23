@@ -5,6 +5,11 @@ export type { KeyResult }
 export type WizardResult = { ok: true; commit: string } | { ok: false; error: string }
 export type TokenResult = { ok: true; username: string } | { ok: false; error: string }
 export type ConnectResult = { ok: true } | { ok: false; error: string }
+export type AskReply = { ok: true; answer: string } | { ok: false; error: string }
+
+contextBridge.exposeInMainWorld("ask", {
+  question: (question: string): Promise<AskReply> => ipcRenderer.invoke("ask:question", question),
+})
 
 contextBridge.exposeInMainWorld("wizard", {
   start: (): Promise<"folder" | "key" | "bot" | "remote"> => ipcRenderer.invoke("wizard:start"),
