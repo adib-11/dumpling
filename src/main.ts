@@ -1,15 +1,60 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Tray } from "electron"
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, safeStorage, shell, Tray } from "electron"
+import fs from "node:fs"
 import path from "node:path"
-import { readBrainFolder, writeBrainFolder } from "./brain-config"
+import { readBrainFolder, readTelegramChat, writeBrainFolder, writeTelegramChat } from "./brain-config"
 import { createSecondBrain, defaultSecondBrainFolder } from "./create-second-brain"
+import { pollTelegram } from "./drain-telegram"
 import { enableLinuxAutostart } from "./login-item"
+import { connectBot, telegramBot } from "./telegram"
 import { trayMenuItems, type TrayMenuItem } from "./tray-menu"
 
 let tray: Tray | null = null
 let wizard: BrowserWindow | null = null
+let connecting: AbortController | null = null
+let polling = false
 
 function configPath(): string {
   return path.join(app.getPath("userData"), "config.json")
+}
+
+function tokenPath(): string {
+  return path.join(app.getPath("userData"), "telegram-token")
+}
+
+// The bot token is kept encrypted by safeStorage, whose key lives in the OS keychain. It is never written
+// to the second brain folder, a log or a command line.
+function saveToken(token: string): void {
+  const plainText =
+    process.platform === "linux" && safeStorage.getSelectedStorageBackend() === "basic_text"
+  if (!safeStorage.isEncryptionAvailable() || plainText) {
+    throw new Error("No OS keychain is available to keep the bot token.")
+  }
+  fs.writeFileSync(tokenPath(), safeStorage.encryptString(token), { mode: 0o600 })
+}
+
+function loadToken(): string | null {
+  try {
+    return safeStorage.decryptString(fs.readFileSync(tokenPath()))
+  } catch {
+    return null
+  }
+}
+
+function telegramConnected(): boolean {
+  return readTelegramChat(configPath()) !== null && loadToken() !== null
+}
+
+function needsSetup(): boolean {
+  return !readBrainFolder(configPath()) || !telegramConnected()
+}
+
+function startPolling(): void {
+  const folder = readBrainFolder(configPath())
+  const chat = readTelegramChat(configPath())
+  const token = loadToken()
+  if (polling || !folder || chat === null || !token) return
+  polling = true
+  void pollTelegram(telegramBot(token), folder, chat, new AbortController().signal)
 }
 
 function resourcePath(...parts: string[]): string {
@@ -44,7 +89,7 @@ function openWizard(): void {
   if (process.platform === "darwin") void app.dock?.show()
   wizard = new BrowserWindow({
     width: 520,
-    height: 320,
+    height: 380,
     resizable: false,
     autoHideMenuBar: true,
     title: "Second Brain",
@@ -59,6 +104,7 @@ function openWizard(): void {
   wizard.webContents.on("will-navigate", (event) => event.preventDefault())
   void wizard.loadFile(path.join(__dirname, "wizard.html"))
   wizard.on("closed", () => {
+    connecting?.abort()
     wizard = null
     if (process.platform === "darwin") app.dock?.hide()
   })
@@ -80,7 +126,9 @@ function toMenuItem(item: TrayMenuItem): Electron.MenuItemConstructorOptions {
 function rebuildMenu(): void {
   if (!tray) return
   const folder = readBrainFolder(configPath())
-  tray.setContextMenu(Menu.buildFromTemplate(trayMenuItems(folder).map(toMenuItem)))
+  tray.setContextMenu(
+    Menu.buildFromTemplate(trayMenuItems(folder, telegramConnected()).map(toMenuItem)),
+  )
   tray.setToolTip("Second Brain")
 }
 
@@ -106,7 +154,7 @@ function start(): void {
   }
 
   app.on("second-instance", () => {
-    if (!readBrainFolder(configPath())) openWizard()
+    if (needsSetup()) openWizard()
   })
 
   app.on("window-all-closed", () => {
@@ -117,6 +165,8 @@ function start(): void {
     tray?.destroy()
     tray = null
   })
+
+  ipcMain.handle("wizard:has-folder", () => readBrainFolder(configPath()) !== null)
 
   ipcMain.handle("wizard:default-folder", () =>
     defaultSecondBrainFolder(app.getPath("home"), app.getPath("documents")),
@@ -143,11 +193,40 @@ function start(): void {
       const created = await createSecondBrain(chosen, resourcePath("templates"))
       writeBrainFolder(configPath(), chosen)
       rebuildMenu()
-      wizard?.close()
       return { ok: true as const, commit: created.commit }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not create the folder."
-      return { ok: false as const, error: message }
+      return { ok: false as const, error: errorMessage(error, "Could not create the folder.") }
+    }
+  })
+
+  ipcMain.handle("wizard:open-botfather", () => shell.openExternal("https://t.me/BotFather"))
+
+  ipcMain.handle("wizard:check-token", async (_event, pasted: unknown) => {
+    try {
+      if (typeof pasted !== "string") throw new Error("Paste the bot token.")
+      const token = pasted.trim()
+      const me = (await telegramBot(token)("getMe")) as { username: string }
+      saveToken(token)
+      return { ok: true as const, username: me.username }
+    } catch (error) {
+      return { ok: false as const, error: errorMessage(error, "Could not check the token.") }
+    }
+  })
+
+  ipcMain.handle("wizard:wait-start", async () => {
+    const token = loadToken()
+    if (!token) return { ok: false as const, error: "Check the bot token first." }
+    connecting?.abort()
+    connecting = new AbortController()
+    try {
+      const chat = await connectBot(telegramBot(token), connecting.signal)
+      writeTelegramChat(configPath(), chat)
+      rebuildMenu()
+      startPolling()
+      wizard?.close()
+      return { ok: true as const }
+    } catch (error) {
+      return { ok: false as const, error: errorMessage(error, "Could not reach the bot.") }
     }
   })
 
@@ -155,8 +234,13 @@ function start(): void {
     enableLogin()
     if (process.platform === "darwin") app.dock?.hide()
     createTray()
-    if (!readBrainFolder(configPath())) openWizard()
+    startPolling()
+    if (needsSetup()) openWizard()
   })
 }
 
 start()
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback
+}

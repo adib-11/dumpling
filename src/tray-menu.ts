@@ -4,10 +4,13 @@ export type TrayMenuItem = {
   enabled: boolean
 }
 
-export function trayMenuItems(brainFolder: string | null): TrayMenuItem[] {
+export function trayMenuItems(brainFolder: string | null, telegramConnected: boolean): TrayMenuItem[] {
   if (brainFolder) {
     return [
       { label: brainFolder, enabled: false },
+      ...(telegramConnected
+        ? []
+        : [{ label: "Connect Telegram…", action: "setup" as const, enabled: true }]),
       { label: "Quit", action: "quit", enabled: true },
     ]
   }
