@@ -4,6 +4,7 @@ import path from "node:path"
 import { exec } from "dugite"
 import { checkIngest } from "./check-ingest"
 import { pushBackup, type PushResult } from "./git-remote"
+import { type Bot } from "./telegram"
 import { writeIndex } from "./write-index"
 
 const gitName = "Second Brain"
@@ -25,6 +26,7 @@ export type IngestResult = {
   cost: number
   reason?: string
   push?: PushResult
+  followUp?: { sent: number; partial: boolean }
 }
 
 type SpawnLike = (
@@ -60,6 +62,8 @@ export async function ingestNow(options: {
   runner: AgentRunner
   today?: string
   now?: Date
+  bot?: Bot
+  chat?: number
 }): Promise<IngestResult> {
   // The app is single-instance, so an in-process lock is enough, and a crash or quit never leaves it held.
   const lock = path.resolve(options.brain)
@@ -73,6 +77,7 @@ export async function ingestNow(options: {
   let cost = 0
   let check = "ok"
   let reason: string | undefined
+  let followUp: IngestResult["followUp"]
   const fail = async (why: string) => {
     await stashChunk(options.brain, now)
     status = "failed"
@@ -139,10 +144,13 @@ export async function ingestNow(options: {
       }
     }
 
+    if (options.bot && options.chat !== undefined) {
+      followUp = await sendFollowUps(options.brain, options.bot, options.chat)
+    }
     record(options.brain, now, status, dumpsFiled, cost, check)
     // Last and best-effort: a failed push rolls nothing back, and the next Ingest pushes again.
     const pushed = await pushBackup(options.brain)
-    return { status, dumps: dumpsFiled, cost, reason, ...(pushed && { push: pushed }) }
+    return { status, dumps: dumpsFiled, cost, reason, ...(pushed && { push: pushed }), ...(followUp && { followUp }) }
   } finally {
     running.delete(lock)
   }
@@ -227,9 +235,107 @@ async function commitOwnerEdits(brain: string): Promise<void> {
   if (committed.exitCode !== 0) throw new Error(committed.stderr || committed.stdout || "git commit failed")
 }
 
-async function commit(brain: string, message: string): Promise<void> {
+// "<dump name>\t<question>" in vault/follow-ups.md. Not a Telegram Dump, an Addendum, or a Dump
+// already asked: drop the line. A failed send stays for the next Ingest.
+async function sendFollowUps(
+  brain: string,
+  bot: Bot,
+  chat: number,
+): Promise<IngestResult["followUp"]> {
+  const file = path.join(brain, "vault", "follow-ups.md")
+  if (!fs.existsSync(file)) return undefined
+  const asked = askedNames(brain)
+  const keep: string[] = []
+  let sent = 0
+  let changed = false
+  let partial = false
+  for (const line of fs.readFileSync(file, "utf8").split("\n")) {
+    if (line === "" || line.startsWith("#")) continue
+    const tab = line.indexOf("\t")
+    const name = tab === -1 ? "" : line.slice(0, tab)
+    const question = tab === -1 ? "" : line.slice(tab + 1)
+    if (name === "" || question === "") {
+      keep.push(line)
+      continue
+    }
+    const dump = dumpFile(brain, name)
+    if (!dump) {
+      keep.push(line)
+      continue
+    }
+    const fields = frontmatterFields(fs.readFileSync(dump, "utf8"))
+    if (asked.has(name) || fields.device !== "telegram" || fields.addendum_to) {
+      changed = true
+      continue
+    }
+    const messageId = Number(fields.telegram_message_id)
+    if (!fields.telegram_message_id || !Number.isInteger(messageId)) {
+      keep.push(line)
+      continue
+    }
+    try {
+      const result = (await bot("sendMessage", {
+        chat_id: chat,
+        text: question,
+        reply_parameters: { message_id: messageId, allow_sending_without_reply: true },
+        reply_markup: { force_reply: true },
+      })) as { message_id?: number }
+      if (typeof result?.message_id !== "number") {
+        keep.push(line)
+        partial = true
+        continue
+      }
+      fs.appendFileSync(path.join(brain, "vault", "telegram-questions.md"), `${result.message_id} ${name}\n`)
+      asked.add(name)
+      sent += 1
+      changed = true
+    } catch {
+      keep.push(line)
+      partial = true
+    }
+  }
+  if (!changed) return { sent, partial }
+  fs.writeFileSync(file, ["# Follow-ups", ...keep, ""].join("\n"))
+  const paths = ["vault/follow-ups.md"]
+  if (fs.existsSync(path.join(brain, "vault", "telegram-questions.md"))) paths.push("vault/telegram-questions.md")
+  await commit(brain, `follow-up: ${sent}`, paths)
+  return { sent, partial }
+}
+
+function askedNames(brain: string): Set<string> {
+  const file = path.join(brain, "vault", "telegram-questions.md")
+  const asked = new Set<string>()
+  if (!fs.existsSync(file)) return asked
+  for (const line of fs.readFileSync(file, "utf8").split("\n")) {
+    const name = line.trim().split(/\s+/)[1]
+    if (name) asked.add(name)
+  }
+  return asked
+}
+
+function dumpFile(brain: string, name: string): string | undefined {
+  const candidates = [
+    path.join(brain, "inbox", `${name}.md`),
+    path.join(brain, "vault", "raw", name.slice(0, 4), name.slice(5, 7), `${name}.md`),
+  ]
+  return candidates.find((candidate) => fs.existsSync(candidate))
+}
+
+function frontmatterFields(text: string): Record<string, string> {
+  const fields: Record<string, string> = {}
+  const lines = text.split("\n")
+  if (lines[0] !== "---") return fields
+  for (let i = 1; i < lines.length && lines[i] !== "---"; i++) {
+    const sep = lines[i].indexOf(":")
+    if (sep === -1) continue
+    fields[lines[i].slice(0, sep)] = lines[i].slice(sep + 1).trim()
+  }
+  return fields
+}
+
+async function commit(brain: string, message: string, paths = ["inbox", "vault"]): Promise<void> {
   const env = gitEnv()
-  const added = await exec(["add", "--", "inbox", "vault"], brain, { env })
+  const added = await exec(["add", "--", ...paths], brain, { env })
   if (added.exitCode !== 0) throw new Error(added.stderr || "git add failed")
   const committed = await exec(["commit", "-m", message, "--no-gpg-sign"], brain, { env })
   if (committed.exitCode !== 0) throw new Error(committed.stderr || committed.stdout || "git commit failed")

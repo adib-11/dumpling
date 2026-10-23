@@ -8,6 +8,8 @@ export type FakeBotApi = {
   updates: unknown[]
   confirmed: number
   calls: { method: string; params: Record<string, unknown> }[]
+  failSend: boolean
+  nextMessageId: number
   close: () => Promise<void>
 }
 
@@ -18,6 +20,8 @@ export async function fakeBotApi(token = "123:secret-token"): Promise<FakeBotApi
     updates: [],
     confirmed: 0,
     calls: [],
+    failSend: false,
+    nextMessageId: 9001,
     close: () => new Promise((resolve) => server.close(() => resolve())),
   }
   const server = http.createServer((req, res) => {
@@ -38,6 +42,11 @@ export async function fakeBotApi(token = "123:secret-token"): Promise<FakeBotApi
         return reply(200, { ok: true, result })
       }
       if (method === "getMe") return reply(200, { ok: true, result: { id: 123, username: "brain_bot" } })
+      if (method === "sendMessage") {
+        if (fake.failSend) return reply(200, { ok: false, description: "send failed" })
+        const message_id = fake.nextMessageId++
+        return reply(200, { ok: true, result: { message_id } })
+      }
       return reply(200, { ok: true, result: true })
     })
   })

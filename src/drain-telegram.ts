@@ -27,6 +27,10 @@ export async function drainTelegram(
     while (fs.existsSync(path.join(folder, "inbox", `${localTime(when).stem}-telegram.md`))) when++
     const stem = `${localTime(when).stem}-telegram`
     const url = /https?:\/\/\S+/.exec(message.text)?.[0]
+    const replied = message.reply_to_message
+    const addendumTo = replied ? dumpOf(folder, replied.message_id) : undefined
+    let body = message.text
+    if (replied && !addendumTo) body = `re ${(replied.text ?? replied.caption ?? "").split("\n")[0]}\n\n${body}`
     const dump = [
       "---",
       `captured: ${localTime(message.date).iso}`,
@@ -34,8 +38,9 @@ export async function drainTelegram(
       `kind: ${url ? "link" : "text"}`,
       ...(url ? [`url: ${url}`] : []),
       `telegram_message_id: ${message.message_id}`,
+      ...(addendumTo ? [`addendum_to: ${addendumTo}`] : []),
       "---",
-      message.text,
+      body,
       "",
     ].join("\n")
     // Written outside inbox/ first, so a half-written Dump is never committed.
@@ -84,6 +89,30 @@ async function commitNewDumps(folder: string): Promise<void> {
   if (!fresh.length) return
   await git(["add", "--", ...fresh], folder)
   await git(["commit", "-m", `drain: ${fresh.length} Dumps`, "--no-gpg-sign", "--", ...fresh], folder)
+}
+
+// The Dump a reply points at. A reply to the bot's question is in vault/telegram-questions.md
+// ("<question id> <dump name>"), because that message is not a Dump.
+// ponytail: scans every Dump per reply; index message ids if vault/raw/ grows past tens of thousands.
+function dumpOf(folder: string, messageId: number): string | undefined {
+  const questions = path.join(folder, "vault", "telegram-questions.md")
+  if (fs.existsSync(questions)) {
+    for (const line of fs.readFileSync(questions, "utf8").split("\n")) {
+      const [id, name] = line.trim().split(/\s+/)
+      if (id === String(messageId) && name) return name
+    }
+  }
+  const needle = `telegram_message_id: ${messageId}`
+  for (const dir of ["inbox", "vault/raw"]) {
+    const root = path.join(folder, dir)
+    if (!fs.existsSync(root)) continue
+    for (const name of fs.readdirSync(root, { recursive: true, encoding: "utf8" })) {
+      if (!name.endsWith(".md")) continue
+      const text = fs.readFileSync(path.join(root, name), "utf8")
+      if (text.split("\n").includes(needle)) return path.basename(name, ".md")
+    }
+  }
+  return undefined
 }
 
 // Each saved message as "<telegram_message_id>\n<text>".

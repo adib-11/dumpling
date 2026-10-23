@@ -4,7 +4,13 @@ export type Bot = (method: string, params?: Record<string, unknown>, signal?: Ab
 
 export type Update = {
   update_id: number
-  message?: { message_id: number; date: number; chat: { id: number; type: string }; text?: string }
+  message?: {
+    message_id: number
+    date: number
+    chat: { id: number; type: string }
+    text?: string
+    reply_to_message?: { message_id: number; text?: string; caption?: string }
+  }
 }
 
 export const longPollSeconds = 25

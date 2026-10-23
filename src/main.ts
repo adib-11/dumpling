@@ -210,10 +210,13 @@ async function ingestFromTray(): Promise<void> {
     return
   }
   try {
+    const token = loadToken()
+    const chat = readTelegramChat(configPath())
     const result = await ingestNow({
       brain: folder,
       apiKey,
       runner: (run) => spawnOpencode(bin, run),
+      ...(token && chat !== null ? { bot: telegramBot(token), chat } : {}),
     })
     if (result.status === "failed") console.error(redact(result.reason ?? "Ingest failed.", apiKey))
     showPush(result)
