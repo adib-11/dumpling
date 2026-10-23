@@ -9,6 +9,9 @@ function npmCli() {
     path.join(binDir, "node_modules", "npm", "bin", "npm-cli.js"),
     path.join(binDir, "..", "lib", "node_modules", "npm", "bin", "npm-cli.js"),
   ]
+  // Homebrew and nvm put an npm symlink next to node instead.
+  const link = path.join(binDir, "npm")
+  if (fs.existsSync(link)) candidates.push(fs.realpathSync(link))
   const found = candidates.find((file) => fs.existsSync(file))
   if (!found) {
     console.error("npm-cli.js was not next to this Node install")
@@ -31,7 +34,7 @@ try {
   const src = path.join(tmp, "node_modules", "opencode-ai", "bin", "opencode.exe")
   fs.mkdirSync(destDir, { recursive: true })
   fs.copyFileSync(src, dest)
-  fs.chmodSync(dest, 0o700)
+  fs.chmodSync(dest, 0o755)
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true })
 }
