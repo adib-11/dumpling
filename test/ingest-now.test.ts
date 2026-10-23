@@ -99,7 +99,7 @@ test("ingest now files a Dump, commits, logs the cost, and keeps the key out of 
   assert.equal(log.stdout.trim(), "ingest: 2026-10-23, 1 Dumps")
   assert.equal(
     fs.readFileSync(path.join(brain, ".state", "runs.tsv"), "utf8"),
-    "when\tstatus\tdumps\tcost\tcheck\n2026-10-23T12:00:00.000Z\tok\t1\t0.0300\tok\n",
+    "when\tstatus\tdumps\tcost\tcheck\tstash\treason\n2026-10-23T12:00:00.000Z\tok\t1\t0.0300\tok\t\t\n",
   )
   assert.equal(contains(brain, key), false)
 })
@@ -132,7 +132,7 @@ test("a chunk that fails check-ingest gets one fix pass and is then filed", asyn
   assert.equal(result.cost, 0.03)
   assert.equal(fs.existsSync(path.join(brain, "vault", "raw", "2026", "10", dump)), true)
   assert.equal(
-    fs.readFileSync(path.join(brain, ".state", "runs.tsv"), "utf8").endsWith("\tok\t1\t0.0300\tfixed\n"),
+    fs.readFileSync(path.join(brain, ".state", "runs.tsv"), "utf8").endsWith("\tok\t1\t0.0300\tfixed\t\t\n"),
     true,
   )
 })
@@ -352,7 +352,7 @@ test("uncommitted Owner edits are committed first, so a runner that changed noth
   assert.match(fs.readFileSync(path.join(brain, "vault", "wiki", "me.md"), "utf8"), /I wrote this by hand/)
 })
 
-test("an aborted opencode run is killed", async () => {
+test("an aborted opencode run is killed, and settles only once the process is gone", async () => {
   const alarm = new AbortController()
   const started = Date.now()
   const run = spawnOpencode(
@@ -361,6 +361,6 @@ test("an aborted opencode run is killed", async () => {
     spawn,
   )
   setTimeout(() => alarm.abort(), 100)
-  await assert.rejects(run, { name: "AbortError" })
+  assert.notEqual((await run).code, 0)
   assert.equal(Date.now() - started < 10000, true)
 })

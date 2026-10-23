@@ -7,6 +7,8 @@ import { exec } from "dugite"
 import { createSecondBrain } from "../src/create-second-brain"
 import { ingestNow, lastIngestStatus, type AgentRunner } from "../src/ingest-now"
 
+process.env.TZ = "Asia/Dhaka"
+
 // The failure cases of tests/ingest.sh in adib-11/second-brain, ported (sections 6, 6b, 7 and 8).
 
 const templates = path.join(__dirname, "..", "templates")
@@ -84,10 +86,12 @@ test("each failure kind stashes the chunk, names the stash in a notification, an
       assert.equal((await git(brain, "stash", "list")).split("\n").length, stashes, kind)
     } else {
       const name = (await git(brain, "stash", "list", "-1", "--format=%s")).trim().replace(/^On [^:]*: /, "")
-      assert.match(name, /^failed ingest /)
+      assert.equal(name, "failed ingest 2026-10-23 18:00:00")
       assert.equal(notices[0].endsWith(` Stash: ${name}.`), true, kind)
       assert.match(await git(brain, "stash", "show", "-u", "--name-only", "stash@{0}"), /vault\/wiki\/partial\.md/)
     }
+    const run = fs.readFileSync(path.join(brain, ".state", "runs.tsv"), "utf8").split("\n").at(-2)?.split("\t")
+    assert.deepEqual(run?.slice(1), ["failed", "0", "0.0000", "ok", kind === "nochange" ? "" : "failed ingest 2026-10-23 18:00:00", want], kind)
   }
   assert.equal(fails(brain, "2026-10-08-120000-mac"), 3)
   assert.equal(lastIngestStatus(brain), "failed")

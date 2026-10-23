@@ -4,6 +4,7 @@ import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 import { exec } from "dugite"
+import { lockBrain } from "../src/brain-lock"
 import { createSecondBrain } from "../src/create-second-brain"
 import { drainTelegram, pollTelegram } from "../src/drain-telegram"
 import { telegramBot } from "../src/telegram"
@@ -214,4 +215,18 @@ test("polling reports each successful drain, after its Dumps are saved", async (
 
   await until(() => drained.length > 0)
   assert.equal(drained[0], 1)
+})
+
+test("during an Ingest or Undo a drain saves the Dump but leaves git alone", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  api.updates = [message(1, 10, at, { text: "while filing" })]
+  const unlock = lockBrain(folder)
+  t.after(() => unlock?.())
+
+  await drainTelegram(bot, folder, 111)
+
+  assert.deepEqual(inbox(folder), ["2026-10-21-140000-telegram.md"])
+  const status = await exec(["status", "--porcelain"], folder)
+  assert.equal(status.stdout, "?? inbox/2026-10-21-140000-telegram.md\n")
 })

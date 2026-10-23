@@ -21,7 +21,7 @@ import { ingestNow, lastIngestStatus, spawnOpencode, undoLastIngest } from "./in
 import { enableLinuxAutostart } from "./login-item"
 import { claimDailyIngest } from "./schedule"
 import { connectBot, telegramBot } from "./telegram"
-import { drainWarnMs, trayHealth, trayMenuItems, type TrayHealth, type TrayMenuItem } from "./tray-menu"
+import { trayHealth, trayMenuItems, type TrayHealth, type TrayMenuItem } from "./tray-menu"
 
 const openaiKeysUrl = "https://platform.openai.com/api-keys"
 
@@ -30,6 +30,7 @@ let wizard: BrowserWindow | null = null
 let connecting: AbortController | null = null
 let polling = false
 let lastDrained: Date | null = null
+let awakeSince = Date.now()
 let health: TrayHealth = "ok"
 
 function configPath(): string {
@@ -103,19 +104,14 @@ function startPolling(): void {
   const token = loadToken()
   if (polling || !folder || chat === null || !token) return
   polling = true
-  drainGrace()
+  // The last drain before this start is unknown, so the 20 h count starts now.
+  lastDrained = new Date()
   // The daily Ingest starts right after a drain, so it files what Telegram held overnight.
   void pollTelegram(telegramBot(token), folder, chat, new AbortController().signal, undefined, () => {
     lastDrained = new Date()
     dailyIngest()
     refreshHealth()
   })
-}
-
-// After a start or a wake, the poll gets five minutes to drain before the tray warns.
-function drainGrace(): void {
-  const floor = Date.now() - drainWarnMs + 5 * 60 * 1000
-  if (!lastDrained || lastDrained.getTime() < floor) lastDrained = new Date(floor)
 }
 
 function dailyIngest(): void {
@@ -401,10 +397,14 @@ function start(): void {
     createTray()
     startPolling()
     if (setupStep()) openWizard()
-    powerMonitor.on("resume", drainGrace)
-    // Without a bot, the clock starts the daily Ingest. With one, each drain does (startPolling).
+    powerMonitor.on("resume", () => {
+      awakeSince = Date.now()
+    })
+    // With a bot, each drain starts the daily Ingest (startPolling). Without one, or with Telegram out of
+    // reach for 5 minutes since the last start or wake, the clock does: the drain is best-effort.
     const tick = () => {
-      if (!polling) dailyIngest()
+      const drainedOrAwake = Math.max(lastDrained?.getTime() ?? 0, awakeSince)
+      if (!polling || Date.now() - drainedOrAwake > 5 * 60 * 1000) dailyIngest()
       refreshHealth()
     }
     tick()

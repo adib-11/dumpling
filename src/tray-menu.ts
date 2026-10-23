@@ -25,7 +25,7 @@ export function trayMenuItems(brainFolder: string | null, telegramConnected: boo
 export type TrayHealth = "ok" | "failing" | "not-drained"
 
 // Telegram keeps updates for 24 h, so the app warns at 20 h. lastDrained is null when no bot is connected.
-export const drainWarnMs = 20 * 3600 * 1000
+const drainWarnMs = 20 * 3600 * 1000
 
 export function trayHealth(lastIngest: string | null, lastDrained: Date | null, now: Date): TrayHealth {
   if (lastIngest === "failed") return "failing"

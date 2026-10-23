@@ -2,6 +2,7 @@ import { spawn as nodeSpawn, type SpawnOptions } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { exec } from "dugite"
+import { lockBrain } from "./brain-lock"
 import { checkIngest } from "./check-ingest"
 import { commitNewDumps } from "./drain-telegram"
 import { writeIndex } from "./write-index"
@@ -11,7 +12,6 @@ const gitEmail = "second-brain@localhost"
 const chunkSize = 25
 // Per agent run. Node timers stand still while the computer sleeps, so this is awake time, as in bin/ingest.
 const chunkTimeoutMs = 20 * 60 * 1000
-const running = new Set<string>()
 
 export type AgentRun = {
   args: string[]
@@ -52,7 +52,10 @@ export async function spawnOpencode(
     const out: Buffer[] = []
     child.stdout?.on("data", (chunk: Buffer) => out.push(chunk))
     child.stderr?.on("data", () => {})
-    child.on("error", reject)
+    // On a timeout, wait for "close", so nothing writes to the brain while the chunk is stashed.
+    child.on("error", (error) => {
+      if (!run.signal.aborted) reject(error)
+    })
     child.on("close", (code) => resolve({ code: code ?? 1, stdout: Buffer.concat(out).toString("utf8") }))
   })
 }
@@ -66,10 +69,8 @@ export async function ingestNow(options: {
   timeoutMs?: number
   notify?: (text: string) => void
 }): Promise<IngestResult> {
-  // The app is single-instance, so an in-process lock is enough, and a crash or quit never leaves it held.
-  const lock = path.resolve(options.brain)
-  if (running.has(lock)) return { status: "already-running", dumps: 0, cost: 0 }
-  running.add(lock)
+  const unlock = lockBrain(options.brain)
+  if (!unlock) return { status: "already-running", dumps: 0, cost: 0 }
 
   const now = options.now ?? new Date()
   const today = options.today ?? localDate(now)
@@ -80,6 +81,7 @@ export async function ingestNow(options: {
   let cost = 0
   let check = "ok"
   let reason: string | undefined
+  let stash: string | undefined
 
   // Runs the agent once. Returns why it failed, if it did.
   const ask = async (prompt: string): Promise<string | undefined> => {
@@ -156,7 +158,7 @@ export async function ingestNow(options: {
         const why = await fileChunk(chunk)
         if (why) {
           // The chunk's edits go to a stash, never a reset, and its Dumps stay in inbox/.
-          const stash = await stashChunk(options.brain, now)
+          stash = await stashChunk(options.brain, now)
           status = "failed"
           reason = why
           notify(`Ingest failed: ${why}. ${chunk.length} Dumps stay in inbox/.${stash ? ` Stash: ${stash}.` : ""}`)
@@ -185,7 +187,6 @@ export async function ingestNow(options: {
     } catch (error) {
       status = "failed"
       reason = error instanceof Error ? error.message : "ingest failed"
-      let stash: string | undefined
       try {
         stash = await stashChunk(options.brain, now)
       } catch {
@@ -194,10 +195,10 @@ export async function ingestNow(options: {
       notify(`Ingest failed: ${reason}.${stash ? ` Stash: ${stash}.` : ""}`)
     }
 
-    record(options.brain, now, status, dumpsFiled, cost, check)
+    record(options.brain, now, [status, dumpsFiled, cost.toFixed(4), check, stash ?? "", reason ?? ""])
     return { status, dumps: dumpsFiled, cost, reason }
   } finally {
-    running.delete(lock)
+    unlock()
   }
 }
 
@@ -216,9 +217,8 @@ function listDumps(brain: string): string[] {
 export async function undoLastIngest(
   brain: string,
 ): Promise<{ status: "ok" | "nothing" | "failed" | "already-running"; reason?: string }> {
-  const lock = path.resolve(brain)
-  if (running.has(lock)) return { status: "already-running" }
-  running.add(lock)
+  const unlock = lockBrain(brain)
+  if (!unlock) return { status: "already-running" }
   try {
     await commitOwnerEdits(brain)
     const reverted = await exec(["log", "--format=%b", "--grep=^This reverts commit "], brain)
@@ -231,7 +231,7 @@ export async function undoLastIngest(
     await exec(["revert", "--abort"], brain)
     return { status: "failed", reason: result.stderr || result.stdout || "git revert failed" }
   } finally {
-    running.delete(lock)
+    unlock()
   }
 }
 
@@ -279,11 +279,13 @@ function costOf(stdout: string): number {
   return sum
 }
 
-function record(brain: string, now: Date, status: string, dumps: number, cost: number, check: string): void {
+// One line per run: status, dumps, cost, check, stash, reason.
+function record(brain: string, now: Date, fields: (string | number)[]): void {
   const file = path.join(brain, ".state", "runs.tsv")
   fs.mkdirSync(path.dirname(file), { recursive: true })
-  if (!fs.existsSync(file)) fs.writeFileSync(file, "when\tstatus\tdumps\tcost\tcheck\n")
-  fs.appendFileSync(file, `${now.toISOString()}\t${status}\t${dumps}\t${cost.toFixed(4)}\t${check}\n`)
+  if (!fs.existsSync(file)) fs.writeFileSync(file, "when\tstatus\tdumps\tcost\tcheck\tstash\treason\n")
+  const line = [now.toISOString(), ...fields].map((field) => String(field).replace(/[\t\r\n]+/g, " "))
+  fs.appendFileSync(file, `${line.join("\t")}\n`)
 }
 
 // The status of the newest run in .state/runs.tsv, or null before the first run.
@@ -299,7 +301,8 @@ async function stashChunk(brain: string, now: Date): Promise<string | undefined>
   const status = await exec(["status", "--porcelain", "--", ".", ":!inbox"], brain)
   if (status.exitCode !== 0) throw new Error(status.stderr || "git status failed")
   if (status.stdout.trim() === "") return undefined
-  const name = `failed ingest ${now.toISOString().slice(0, 19).replace("T", " ")}`
+  const time = [now.getHours(), now.getMinutes(), now.getSeconds()].map((n) => String(n).padStart(2, "0"))
+  const name = `failed ingest ${localDate(now)} ${time.join(":")}`
   const stashed = await exec(
     ["stash", "push", "-q", "-u", "-m", name, "--", ".", ":!inbox"],
     brain,
