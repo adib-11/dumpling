@@ -15,7 +15,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -56,6 +56,8 @@ jobs:
     name: Draft GitHub Release
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -72,6 +74,7 @@ jobs:
           draft: true
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
           files: dist-upload/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
