@@ -1,21 +1,29 @@
+const folderStep = document.getElementById("folder-step")
+const keyStep = document.getElementById("key-step")
+const botStep = document.getElementById("bot-step")
 const input = document.getElementById("folder")
 const error = document.getElementById("error")
 const create = document.getElementById("create")
+const keyInput = document.getElementById("key")
+const keyError = document.getElementById("key-error")
+const saveKey = document.getElementById("save-key")
 const botError = document.getElementById("bot-error")
 const check = document.getElementById("check")
 const start = document.getElementById("start")
 
-function showBotStep() {
-  document.getElementById("folder-step").hidden = true
-  document.getElementById("bot-step").hidden = false
+function show(step) {
+  folderStep.hidden = step !== "folder"
+  keyStep.hidden = step !== "key"
+  botStep.hidden = step !== "bot"
 }
 
-window.wizard.hasFolder().then((has) => {
-  if (has) showBotStep()
-})
-
-window.wizard.defaultFolder().then((folder) => {
-  input.value = folder
+window.wizard.start().then((step) => {
+  show(step)
+  if (step === "folder") {
+    window.wizard.defaultFolder().then((folder) => {
+      input.value = folder
+    })
+  }
 })
 
 document.getElementById("browse").addEventListener("click", async () => {
@@ -23,7 +31,11 @@ document.getElementById("browse").addEventListener("click", async () => {
   if (picked) input.value = picked
 })
 
-document.querySelector("#folder-step form").addEventListener("submit", async (event) => {
+document.getElementById("open-keys").addEventListener("click", () => {
+  void window.wizard.openKeyPage()
+})
+
+document.getElementById("folder-form").addEventListener("submit", async (event) => {
   event.preventDefault()
   error.textContent = ""
   create.disabled = true
@@ -33,7 +45,20 @@ document.querySelector("#folder-step form").addEventListener("submit", async (ev
     create.disabled = false
     return
   }
-  showBotStep()
+  show("key")
+})
+
+document.getElementById("key-form").addEventListener("submit", async (event) => {
+  event.preventDefault()
+  keyError.textContent = ""
+  saveKey.disabled = true
+  const result = await window.wizard.saveKey(keyInput.value)
+  if (!result.ok) {
+    keyError.textContent = result.error
+    saveKey.disabled = false
+    return
+  }
+  show("bot")
 })
 
 document.getElementById("botfather").addEventListener("click", () => window.wizard.openBotFather())

@@ -1,6 +1,6 @@
 export type TrayMenuItem = {
   label: string
-  action?: "setup" | "quit"
+  action?: "setup" | "ingest" | "quit"
   enabled: boolean
 }
 
@@ -8,6 +8,7 @@ export function trayMenuItems(brainFolder: string | null, telegramConnected: boo
   if (brainFolder) {
     return [
       { label: brainFolder, enabled: false },
+      { label: "Ingest now", action: "ingest", enabled: true },
       ...(telegramConnected
         ? []
         : [{ label: "Connect Telegram…", action: "setup" as const, enabled: true }]),

@@ -1,12 +1,16 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, safeStorage, shell, Tray } from "electron"
 import fs from "node:fs"
 import path from "node:path"
+import { acceptApiKey, loadApiKey } from "./api-key"
 import { readBrainFolder, readTelegramChat, writeBrainFolder, writeTelegramChat } from "./brain-config"
 import { createSecondBrain, defaultSecondBrainFolder } from "./create-second-brain"
 import { pollTelegram } from "./drain-telegram"
+import { ingestNow, spawnOpencode } from "./ingest-now"
 import { enableLinuxAutostart } from "./login-item"
 import { connectBot, telegramBot } from "./telegram"
 import { trayMenuItems, type TrayMenuItem } from "./tray-menu"
+
+const openaiKeysUrl = "https://platform.openai.com/api-keys"
 
 let tray: Tray | null = null
 let wizard: BrowserWindow | null = null
@@ -17,16 +21,33 @@ function configPath(): string {
   return path.join(app.getPath("userData"), "config.json")
 }
 
+function keyFile(): string {
+  return path.join(app.getPath("userData"), "openai-key.bin")
+}
+
 function tokenPath(): string {
   return path.join(app.getPath("userData"), "telegram-token")
+}
+
+function keychainReady(): boolean {
+  const plainText =
+    process.platform === "linux" && safeStorage.getSelectedStorageBackend() === "basic_text"
+  return safeStorage.isEncryptionAvailable() && !plainText
+}
+
+function storedKey(): string | null {
+  try {
+    if (!keychainReady()) return null
+    return loadApiKey(keyFile(), safeStorage)
+  } catch {
+    return null
+  }
 }
 
 // The bot token is kept encrypted by safeStorage, whose key lives in the OS keychain. It is never written
 // to the second brain folder, a log or a command line.
 function saveToken(token: string): void {
-  const plainText =
-    process.platform === "linux" && safeStorage.getSelectedStorageBackend() === "basic_text"
-  if (!safeStorage.isEncryptionAvailable() || plainText) {
+  if (!keychainReady()) {
     throw new Error("No OS keychain is available to keep the bot token.")
   }
   fs.writeFileSync(tokenPath(), safeStorage.encryptString(token), { mode: 0o600 })
@@ -40,12 +61,25 @@ function loadToken(): string | null {
   }
 }
 
+function opencodeBin(): string {
+  const name = process.platform === "win32" ? "opencode.exe" : "opencode"
+  const root = app.isPackaged ? process.resourcesPath : path.join(__dirname, "..", "vendor")
+  return path.join(root, "opencode", name)
+}
+
+function redact(text: string, secret: string): string {
+  return secret === "" ? text : text.split(secret).join("[redacted]")
+}
+
 function telegramConnected(): boolean {
   return readTelegramChat(configPath()) !== null && loadToken() !== null
 }
 
-function needsSetup(): boolean {
-  return !readBrainFolder(configPath()) || !telegramConnected()
+function setupStep(): "folder" | "key" | "bot" | null {
+  if (readBrainFolder(configPath()) === null) return "folder"
+  if (storedKey() === null) return "key"
+  if (!telegramConnected()) return "bot"
+  return null
 }
 
 function startPolling(): void {
@@ -89,7 +123,7 @@ function openWizard(): void {
   if (process.platform === "darwin") void app.dock?.show()
   wizard = new BrowserWindow({
     width: 520,
-    height: 380,
+    height: 420,
     resizable: false,
     autoHideMenuBar: true,
     title: "Second Brain",
@@ -119,7 +153,11 @@ function toMenuItem(item: TrayMenuItem): Electron.MenuItemConstructorOptions {
         ? () => app.quit()
         : item.action === "setup"
           ? () => openWizard()
-          : undefined,
+          : item.action === "ingest"
+            ? () => {
+                void ingestFromTray()
+              }
+            : undefined,
   }
 }
 
@@ -144,6 +182,35 @@ function createTray(): void {
   rebuildMenu()
 }
 
+async function ingestFromTray(): Promise<void> {
+  const folder = readBrainFolder(configPath())
+  if (!folder) {
+    openWizard()
+    return
+  }
+  const apiKey = storedKey()
+  if (!apiKey) {
+    openWizard()
+    return
+  }
+  const bin = opencodeBin()
+  if (!fs.existsSync(bin)) {
+    dialog.showErrorBox("Second Brain", "The opencode binary is missing.")
+    return
+  }
+  try {
+    const result = await ingestNow({
+      brain: folder,
+      apiKey,
+      runner: (run) => spawnOpencode(bin, run),
+    })
+    if (result.status === "failed") console.error(redact(result.reason ?? "Ingest failed.", apiKey))
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Ingest failed."
+    console.error(redact(message, apiKey))
+  }
+}
+
 function start(): void {
   if (process.platform === "win32") app.setAppUserModelId("app.second-brain")
 
@@ -154,7 +221,7 @@ function start(): void {
   }
 
   app.on("second-instance", () => {
-    if (needsSetup()) openWizard()
+    if (setupStep()) openWizard()
   })
 
   app.on("window-all-closed", () => {
@@ -166,7 +233,19 @@ function start(): void {
     tray = null
   })
 
-  ipcMain.handle("wizard:has-folder", () => readBrainFolder(configPath()) !== null)
+  ipcMain.handle("wizard:start", () => setupStep() ?? "bot")
+
+  ipcMain.handle("wizard:open-key-page", () => shell.openExternal(openaiKeysUrl))
+
+  ipcMain.handle("wizard:save-key", async (_event, key: unknown) => {
+    if (typeof key !== "string") return { ok: false as const, error: "Paste a key." }
+    if (!keychainReady()) {
+      return { ok: false as const, error: "The OS keychain is not available." }
+    }
+    const result = await acceptApiKey(key, keyFile(), safeStorage, fetch)
+    if (result.ok && telegramConnected()) wizard?.close()
+    return result
+  })
 
   ipcMain.handle("wizard:default-folder", () =>
     defaultSecondBrainFolder(app.getPath("home"), app.getPath("documents")),
@@ -235,7 +314,7 @@ function start(): void {
     if (process.platform === "darwin") app.dock?.hide()
     createTray()
     startPolling()
-    if (needsSetup()) openWizard()
+    if (setupStep()) openWizard()
   })
 }
 
