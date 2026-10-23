@@ -20,3 +20,18 @@ export function claimDailyIngest(stampFile: string, now: Date): boolean {
   fs.writeFileSync(stampFile, now.toISOString())
   return true
 }
+
+// The last successful Telegram drain. Survives a quit, so a switched-off computer still warns after 20 h.
+export function readDrain(stampFile: string): Date | null {
+  try {
+    const date = new Date(fs.readFileSync(stampFile, "utf8").trim())
+    return Number.isNaN(date.getTime()) ? null : date
+  } catch {
+    return null
+  }
+}
+
+export function rememberDrain(stampFile: string, now: Date): void {
+  fs.mkdirSync(path.dirname(stampFile), { recursive: true })
+  fs.writeFileSync(stampFile, now.toISOString())
+}

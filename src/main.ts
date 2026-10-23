@@ -20,7 +20,7 @@ import { pollTelegram } from "./drain-telegram"
 import { backupRemote, hideCredentials, setBackupRemote } from "./git-remote"
 import { ingestNow, lastIngestStatus, spawnOpencode, undoLastIngest, type IngestResult } from "./ingest-now"
 import { enableLinuxAutostart } from "./login-item"
-import { claimDailyIngest } from "./schedule"
+import { claimDailyIngest, readDrain, rememberDrain } from "./schedule"
 import { connectBot, telegramBot } from "./telegram"
 import { trayHealth, trayMenuItems, type TrayHealth, type TrayMenuItem } from "./tray-menu"
 
@@ -107,14 +107,19 @@ function startPolling(): void {
   const token = loadToken()
   if (polling || !folder || chat === null || !token) return
   polling = true
-  // The last drain before this start is unknown, so the 20 h count starts now.
-  lastDrained = new Date()
+  lastDrained = readDrain(drainStamp(folder)) ?? new Date()
   // The daily Ingest starts right after a drain, so it files what Telegram held overnight.
   void pollTelegram(telegramBot(token), folder, chat, new AbortController().signal, undefined, () => {
-    lastDrained = new Date()
+    const now = new Date()
+    lastDrained = now
+    rememberDrain(drainStamp(folder), now)
     dailyIngest()
     refreshHealth()
   })
+}
+
+function drainStamp(folder: string): string {
+  return path.join(folder, ".state", "drained")
 }
 
 function dailyIngest(): void {
