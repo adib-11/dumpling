@@ -1,0 +1,97 @@
+{
+  "name": "second-brain-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shareable second brain tray app",
+  "author": "adib-11",
+  "desktopName": "second-brain.desktop",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc && node scripts/copy-static.js",
+    "start": "npm run build && electron .",
+    "test": "node scripts/run-tests.js",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/adib-11/second-brain-app"
+  },
+  "build": {
+    "appId": "app.second-brain",
+    "productName": "Second Brain",
+    "executableName": "second-brain",
+    "artifactName": "Second-Brain-${version}-${arch}.${ext}",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json",
+      "!dist/**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "templates",
+        "to": "templates"
+      },
+      {
+        "from": "assets",
+        "to": "assets"
+      }
+    ],
+    "asarUnpack": [
+      "**/node_modules/dugite/**"
+    ],
+    "mac": {
+      "identity": "-",
+      "hardenedRuntime": false,
+      "category": "public.app-category.productivity",
+      "icon": "assets/icon.png",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["arm64"]
+        }
+      ]
+    },
+    "win": {
+      "signExecutable": false,
+      "icon": "assets/icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "linux": {
+      "icon": "assets/icon.png",
+      "category": "Utility",
+      "syncDesktopName": true,
+      "executableArgs": [],
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        }
+      ]
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.15.3",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "dugite": "^3.3.1"
+  }
+}
