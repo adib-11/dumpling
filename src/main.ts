@@ -1,15 +1,43 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Tray } from "electron"
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, safeStorage, shell, Tray } from "electron"
+import fs from "node:fs"
 import path from "node:path"
+import { acceptApiKey, loadApiKey } from "./api-key"
 import { readBrainFolder, writeBrainFolder } from "./brain-config"
 import { createSecondBrain, defaultSecondBrainFolder } from "./create-second-brain"
+import { ingestNow, spawnOpencode } from "./ingest-now"
 import { enableLinuxAutostart } from "./login-item"
 import { trayMenuItems, type TrayMenuItem } from "./tray-menu"
+
+const openaiKeysUrl = "https://platform.openai.com/api-keys"
 
 let tray: Tray | null = null
 let wizard: BrowserWindow | null = null
 
 function configPath(): string {
   return path.join(app.getPath("userData"), "config.json")
+}
+
+function keyFile(): string {
+  return path.join(app.getPath("userData"), "openai-key.bin")
+}
+
+function storedKey(): string | null {
+  try {
+    if (!safeStorage.isEncryptionAvailable()) return null
+    return loadApiKey(keyFile(), safeStorage)
+  } catch {
+    return null
+  }
+}
+
+function opencodeBin(): string {
+  const name = process.platform === "win32" ? "opencode.exe" : "opencode"
+  const root = app.isPackaged ? process.resourcesPath : path.join(__dirname, "..", "vendor")
+  return path.join(root, "opencode", name)
+}
+
+function redact(text: string, secret: string): string {
+  return secret === "" ? text : text.split(secret).join("[redacted]")
 }
 
 function resourcePath(...parts: string[]): string {
@@ -44,7 +72,7 @@ function openWizard(): void {
   if (process.platform === "darwin") void app.dock?.show()
   wizard = new BrowserWindow({
     width: 520,
-    height: 320,
+    height: 420,
     resizable: false,
     autoHideMenuBar: true,
     title: "Second Brain",
@@ -73,7 +101,11 @@ function toMenuItem(item: TrayMenuItem): Electron.MenuItemConstructorOptions {
         ? () => app.quit()
         : item.action === "setup"
           ? () => openWizard()
-          : undefined,
+          : item.action === "ingest"
+            ? () => {
+                void ingestFromTray()
+              }
+            : undefined,
   }
 }
 
@@ -96,6 +128,37 @@ function createTray(): void {
   rebuildMenu()
 }
 
+async function ingestFromTray(): Promise<void> {
+  const folder = readBrainFolder(configPath())
+  if (!folder) {
+    openWizard()
+    return
+  }
+  const apiKey = storedKey()
+  if (!apiKey) {
+    openWizard()
+    return
+  }
+  const bin = opencodeBin()
+  if (!fs.existsSync(bin)) {
+    dialog.showErrorBox("Second Brain", "The opencode binary is missing.")
+    return
+  }
+  try {
+    const result = await ingestNow({
+      brain: folder,
+      apiKey,
+      runner: (run) => spawnOpencode(bin, run),
+    })
+    if (result.status === "failed") {
+      dialog.showErrorBox("Second Brain", redact(result.reason ?? "Ingest failed.", apiKey))
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Ingest failed."
+    dialog.showErrorBox("Second Brain", redact(message, apiKey))
+  }
+}
+
 function start(): void {
   if (process.platform === "win32") app.setAppUserModelId("app.second-brain")
 
@@ -106,7 +169,7 @@ function start(): void {
   }
 
   app.on("second-instance", () => {
-    if (!readBrainFolder(configPath())) openWizard()
+    if (readBrainFolder(configPath()) === null || storedKey() === null) openWizard()
   })
 
   app.on("window-all-closed", () => {
@@ -116,6 +179,20 @@ function start(): void {
   app.on("before-quit", () => {
     tray?.destroy()
     tray = null
+  })
+
+  ipcMain.handle("wizard:start", () => (readBrainFolder(configPath()) ? "key" : "folder"))
+
+  ipcMain.handle("wizard:open-key-page", () => shell.openExternal(openaiKeysUrl))
+
+  ipcMain.handle("wizard:save-key", async (_event, key: unknown) => {
+    if (typeof key !== "string") return { ok: false as const, error: "Paste a key." }
+    if (!safeStorage.isEncryptionAvailable()) {
+      return { ok: false as const, error: "The OS keychain is not available." }
+    }
+    const result = await acceptApiKey(key, keyFile(), safeStorage, fetch)
+    if (result.ok) wizard?.close()
+    return result
   })
 
   ipcMain.handle("wizard:default-folder", () =>
@@ -143,7 +220,6 @@ function start(): void {
       const created = await createSecondBrain(chosen, resourcePath("templates"))
       writeBrainFolder(configPath(), chosen)
       rebuildMenu()
-      wizard?.close()
       return { ok: true as const, commit: created.commit }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not create the folder."
@@ -155,7 +231,7 @@ function start(): void {
     enableLogin()
     if (process.platform === "darwin") app.dock?.hide()
     createTray()
-    if (!readBrainFolder(configPath())) openWizard()
+    if (readBrainFolder(configPath()) === null || storedKey() === null) openWizard()
   })
 }
 

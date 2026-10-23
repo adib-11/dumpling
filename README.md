@@ -4,7 +4,7 @@ A tray app for a second brain on your own computer. It is free and open source. 
 
 The product spec lives in the private repo [adib-11/second-brain](https://github.com/adib-11/second-brain), file `docs/spec/shareable.md`. This repo is the shareable app.
 
-This first slice is the tray, the folder step of the wizard, and the release pipeline. Telegram, the OpenAI key, and Ingest are not in it yet.
+The tray, the folder and OpenAI key steps of the wizard, and Ingest now are in place. Telegram capture is not in it yet.
 
 ## Download
 
@@ -53,9 +53,9 @@ If FUSE is unavailable, `APPIMAGE_EXTRACT_AND_RUN=1 ./Second-Brain-*-x86_64.AppI
 
 ## First launch
 
-The app sits in the menu bar on Mac and in the system tray on Windows and Linux. The menu has Quit.
+The app sits in the menu bar on Mac and in the system tray on Windows and Linux. The menu shows the folder, Ingest now, and Quit.
 
-The first window asks for a folder. The default is `Documents/Second Brain`. Create makes that folder, without a git install on the computer (git is bundled):
+The first window asks for a folder, then an OpenAI API key. The wizard checks the key with one call and stores it in the OS keychain. The default folder is `Documents/Second Brain`. Create makes that folder, without a git install on the computer (git is bundled):
 
 - `inbox/`
 - `vault/raw/`
@@ -66,9 +66,11 @@ The first window asks for a folder. The default is `Documents/Second Brain`. Cre
 
 The packaged app also registers itself to open at login (macOS and Windows login items; an XDG autostart entry on Linux, aimed at the AppImage when that is how it was started).
 
+Ingest now files markdown Dumps dropped in `inbox/`. It runs the bundled opencode binary on the ingest skill, up to 25 Dumps at a time, then moves that chunk to `vault/raw/YYYY/MM/` and commits `ingest: <date>, N Dumps`. The cost of the run is appended to `.state/runs.tsv`. The key is not written into the folder, the log, or the opencode process arguments.
+
 ## Templates
 
-`templates/` is copied from [adib-11/second-brain](https://github.com/adib-11/second-brain) at the commit in `templates/SOURCE_COMMIT`. The app owns those files inside each second brain. Nothing else from that repo is in this one.
+`templates/` is copied from [adib-11/second-brain](https://github.com/adib-11/second-brain) at the commit in `templates/SOURCE_COMMIT`. The app owns those files inside each second brain. `tests/fixtures/ingest` is the v1 fixture set from that repo, with no keys or personal notes.
 
 ## Development
 

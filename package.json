@@ -40,6 +40,10 @@
       {
         "from": "assets",
         "to": "assets"
+      },
+      {
+        "from": "vendor/opencode",
+        "to": "opencode"
       }
     ],
     "asarUnpack": [

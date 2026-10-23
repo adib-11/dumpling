@@ -10,6 +10,7 @@ test("the tray menu quits, and offers setup until a folder is chosen", () => {
 
   assert.deepEqual(trayMenuItems("/home/ada/Documents/Second Brain"), [
     { label: "/home/ada/Documents/Second Brain", enabled: false },
+    { label: "Ingest now", action: "ingest", enabled: true },
     { label: "Quit", action: "quit", enabled: true },
   ])
 })

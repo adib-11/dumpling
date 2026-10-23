@@ -51,22 +51,42 @@
     </style>
   </head>
   <body>
-    <h1>Choose a folder</h1>
-    <p>
-      This is where the second brain lives. The app creates the vault and a git history in the
-      folder you pick. The usual place is Documents/Second Brain.
-    </p>
-    <form>
-      <label for="folder">Folder</label>
-      <div class="row">
-        <input id="folder" name="folder" type="text" spellcheck="false" required />
-        <button type="button" id="browse">Browse</button>
-      </div>
-      <p id="error" role="alert"></p>
-      <div class="actions">
-        <button type="submit" id="create">Create</button>
-      </div>
-    </form>
+    <section id="folder-step">
+      <h1>Choose a folder</h1>
+      <p>
+        This is where the second brain lives. The app creates the vault and a git history in the
+        folder you pick. The usual place is Documents/Second Brain.
+      </p>
+      <form id="folder-form">
+        <label for="folder">Folder</label>
+        <div class="row">
+          <input id="folder" name="folder" type="text" spellcheck="false" required />
+          <button type="button" id="browse">Browse</button>
+        </div>
+        <p id="error" role="alert"></p>
+        <div class="actions">
+          <button type="submit" id="create">Create</button>
+        </div>
+      </form>
+    </section>
+    <section id="key-step" hidden>
+      <h1>Paste an OpenAI API key</h1>
+      <p>
+        Ingest uses your key with gpt-5.6-luna. OpenAI does not use API data for training by
+        default. The key is stored in the OS keychain.
+      </p>
+      <form id="key-form">
+        <label for="key">API key</label>
+        <div class="row">
+          <input id="key" name="key" type="password" spellcheck="false" autocomplete="off" required />
+          <button type="button" id="open-keys">Get a key</button>
+        </div>
+        <p id="key-error" role="alert"></p>
+        <div class="actions">
+          <button type="submit" id="save-key">Save key</button>
+        </div>
+      </form>
+    </section>
     <script src="wizard.js"></script>
   </body>
 </html>
