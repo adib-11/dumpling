@@ -35,6 +35,9 @@ export function defaultSecondBrainFolder(homeDir: string, documentsDir: string):
 }
 
 export async function createSecondBrain(folder: string, templatesDir: string): Promise<{ commit: string }> {
+  if (!path.isAbsolute(folder)) {
+    throw new Error(`Choose a full folder path, not ${folder}`)
+  }
   const existed = fs.existsSync(folder)
   if (existed && fs.readdirSync(folder).length > 0) {
     throw new Error(`Second brain folder is not empty: ${folder}`)

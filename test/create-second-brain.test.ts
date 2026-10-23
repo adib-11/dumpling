@@ -241,6 +241,12 @@ test("createSecondBrain refuses a folder that already has files", async () => {
   assert.equal(fs.readdirSync(folder).sort().join(","), "keep.txt")
 })
 
+test("createSecondBrain refuses a relative folder", async () => {
+  await assert.rejects(() => createSecondBrain("Second Brain", templatesDir), /full folder path/)
+
+  assert.equal(fs.existsSync(path.resolve("Second Brain")), false)
+})
+
 function snapshotEnv(keys: string[]): Map<string, string | undefined> {
   return new Map(keys.map((key) => [key, process.env[key]]))
 }
