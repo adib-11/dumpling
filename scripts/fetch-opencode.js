@@ -34,7 +34,7 @@ try {
   const src = path.join(tmp, "node_modules", "opencode-ai", "bin", "opencode.exe")
   fs.mkdirSync(destDir, { recursive: true })
   fs.copyFileSync(src, dest)
-  fs.chmodSync(dest, 0o755)
+  fs.chmodSync(dest, 0o700)
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true })
 }
