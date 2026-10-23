@@ -21,9 +21,9 @@ export async function setBackupRemote(brain: string, url: string): Promise<void>
   if (result.exitCode !== 0) throw new Error(hideCredentials(result.stderr) || "git remote failed")
 }
 
-// Returns null when no remote is set, so nothing was pushed.
 export type PushResult = { ok: true } | { ok: false; error: string }
 
+// Returns null when no remote is set, so nothing was pushed.
 export async function pushBackup(brain: string): Promise<PushResult | null> {
   try {
     if ((await backupRemote(brain)) === null) return null

@@ -226,12 +226,13 @@ async function ingestFromTray(): Promise<void> {
 // A failed push shows in the tray until a push succeeds, and notifies once.
 function showPush(result: IngestResult): void {
   if (!result.push) return
-  const failed = !result.push.ok
-  if (!result.push.ok) console.error(`Backup push failed: ${result.push.error}`)
-  if (failed && !backupFailed && Notification.isSupported()) {
-    new Notification({ title: "Second Brain", body: "Backup push failed. Ingest still filed everything." }).show()
+  if (!result.push.ok) {
+    console.error(`Backup push failed: ${result.push.error}`)
+    if (!backupFailed && Notification.isSupported()) {
+      new Notification({ title: "Second Brain", body: "Backup push failed. Ingest still filed everything." }).show()
+    }
   }
-  backupFailed = failed
+  backupFailed = !result.push.ok
   rebuildMenu()
 }
 
