@@ -51,22 +51,43 @@
     </style>
   </head>
   <body>
-    <h1>Choose a folder</h1>
-    <p>
-      This is where the second brain lives. The app creates the vault and a git history in the
-      folder you pick. The usual place is Documents/Second Brain.
-    </p>
-    <form>
-      <label for="folder">Folder</label>
-      <div class="row">
-        <input id="folder" name="folder" type="text" spellcheck="false" required />
-        <button type="button" id="browse">Browse</button>
-      </div>
-      <p id="error" role="alert"></p>
-      <div class="actions">
-        <button type="submit" id="create">Create</button>
-      </div>
-    </form>
+    <section id="folder-step">
+      <h1>Choose a folder</h1>
+      <p>
+        This is where the second brain lives. The app creates the vault and a git history in the
+        folder you pick. The usual place is Documents/Second Brain.
+      </p>
+      <form>
+        <label for="folder">Folder</label>
+        <div class="row">
+          <input id="folder" name="folder" type="text" spellcheck="false" required />
+          <button type="button" id="browse">Browse</button>
+        </div>
+        <p id="error" role="alert"></p>
+        <div class="actions">
+          <button type="submit" id="create">Create</button>
+        </div>
+      </form>
+    </section>
+    <section id="bot-step" hidden>
+      <h1>Connect your Telegram bot</h1>
+      <p>
+        Open BotFather, send <code>/newbot</code>, and paste the token it gives you. The bot chat
+        lives on Telegram's servers until the app saves each message and deletes it from the chat.
+      </p>
+      <form id="token-form">
+        <label for="token">Bot token</label>
+        <div class="row">
+          <input id="token" name="token" type="password" spellcheck="false" autocomplete="off" required />
+          <button type="button" id="botfather">Open BotFather</button>
+        </div>
+        <p id="bot-error" role="alert"></p>
+        <div class="actions">
+          <button type="submit" id="check">Check</button>
+        </div>
+      </form>
+      <p id="start" hidden></p>
+    </section>
     <script src="wizard.js"></script>
   </body>
 </html>

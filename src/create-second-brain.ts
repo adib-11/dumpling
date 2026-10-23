@@ -87,7 +87,7 @@ function rollback(folder: string, existed: boolean): void {
   }
 }
 
-async function git(
+export async function git(
   args: string[],
   folder: string,
   env?: Record<string, string>,
