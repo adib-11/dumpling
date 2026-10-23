@@ -22,9 +22,11 @@ export async function setBackupRemote(brain: string, url: string): Promise<void>
 }
 
 // Returns null when no remote is set, so nothing was pushed.
-export async function pushBackup(brain: string): Promise<{ ok: true } | { ok: false; error: string } | null> {
-  if ((await backupRemote(brain)) === null) return null
+export type PushResult = { ok: true } | { ok: false; error: string }
+
+export async function pushBackup(brain: string): Promise<PushResult | null> {
   try {
+    if ((await backupRemote(brain)) === null) return null
     const result = await exec(["push", "--quiet", remote, "HEAD"], brain, {
       env: { GIT_TERMINAL_PROMPT: "0" },
       signal: AbortSignal.timeout(pushTimeoutMs),
@@ -38,5 +40,5 @@ export async function pushBackup(brain: string): Promise<{ ok: true } | { ok: fa
 
 // Remote URLs can carry a user and token. They must never reach a log, the tray or a notification.
 export function hideCredentials(text: string): string {
-  return text.replace(/(\w+:\/\/)[^\s/@]+@/g, "$1").trim()
+  return text.replace(/(\w+:\/\/)[^\s/]*@/g, "$1").trim()
 }

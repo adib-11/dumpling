@@ -30,8 +30,8 @@ window.wizard.start().then((step) => {
     })
   }
   if (step === "remote") {
-    window.wizard.backupRemote().then((url) => {
-      document.getElementById("remote-current").textContent = url ? `Now pushing to ${url}` : "No remote is set."
+    window.wizard.backupRemote().then((set) => {
+      document.getElementById("remote-current").textContent = set ? "A remote is set." : "No remote is set."
     })
   }
 })

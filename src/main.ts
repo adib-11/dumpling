@@ -118,6 +118,10 @@ function enableLogin(): void {
 }
 
 function openWizard(step: "remote" | null = null): void {
+  if (wizard && step !== null) {
+    wizardStep = step
+    wizard.reload()
+  }
   if (wizard) {
     wizard.show()
     wizard.focus()
@@ -221,9 +225,9 @@ async function ingestFromTray(): Promise<void> {
 
 // A failed push shows in the tray until a push succeeds, and notifies once.
 function showPush(result: IngestResult): void {
-  if (result.push === undefined) return
-  const failed = result.push === "failed"
-  if (failed) console.error(`Backup push failed: ${result.pushError ?? ""}`)
+  if (!result.push) return
+  const failed = !result.push.ok
+  if (!result.push.ok) console.error(`Backup push failed: ${result.push.error}`)
   if (failed && !backupFailed && Notification.isSupported()) {
     new Notification({ title: "Second Brain", body: "Backup push failed. Ingest still filed everything." }).show()
   }
@@ -257,8 +261,7 @@ function start(): void {
 
   ipcMain.handle("wizard:backup-remote", async () => {
     const folder = readBrainFolder(configPath())
-    const url = folder ? await backupRemote(folder) : null
-    return url === null ? null : hideCredentials(url)
+    return folder !== null && (await backupRemote(folder)) !== null
   })
 
   ipcMain.handle("wizard:save-remote", async (_event, url: unknown) => {
@@ -267,7 +270,7 @@ function start(): void {
     if (typeof url !== "string") return { ok: false as const, error: "Paste a git remote URL." }
     try {
       await setBackupRemote(folder, url)
-      if (url.trim() === "") backupFailed = false
+      backupFailed = false
       rebuildMenu()
       wizard?.close()
       return { ok: true as const }

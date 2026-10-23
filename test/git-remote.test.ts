@@ -5,7 +5,7 @@ import path from "node:path"
 import test from "node:test"
 import { exec } from "dugite"
 import { createSecondBrain } from "../src/create-second-brain"
-import { backupRemote, setBackupRemote } from "../src/git-remote"
+import { backupRemote, hideCredentials, setBackupRemote } from "../src/git-remote"
 import { ingestNow, type AgentRunner } from "../src/ingest-now"
 
 const templates = path.join(__dirname, "..", "templates")
@@ -35,7 +35,7 @@ test("with a remote set, each Ingest commit reaches it", async () => {
   const result = await ingestNow({ brain, apiKey: key, now, runner: files })
 
   assert.equal(result.status, "ok")
-  assert.equal(result.push, "ok")
+  assert.deepEqual(result.push, { ok: true })
   const local = await exec(["rev-parse", "HEAD"], brain)
   const pushed = await exec(["rev-parse", "main"], remote)
   assert.equal(pushed.stdout, local.stdout)
@@ -51,9 +51,8 @@ test("with the remote unreachable, Ingest still files, and the failure hides the
   assert.equal(result.status, "ok")
   assert.equal(result.dumps, 1)
   assert.equal((await exec(["log", "-1", "--format=%s"], brain)).stdout.startsWith("ingest: "), true)
-  assert.equal(result.push, "failed")
-  assert.ok(result.pushError)
-  assert.equal(result.pushError.includes("hunter2"), false)
+  assert.equal(result.push?.ok, false)
+  assert.equal(JSON.stringify(result.push).includes("hunter2"), false)
 })
 
 test("with no remote set, the app never pushes", async () => {
@@ -79,4 +78,26 @@ test("a remote URL that looks like an option is refused", async () => {
   const brain = await brainWithDump()
   await assert.rejects(setBackupRemote(brain, "--upload-pack=touch pwned"))
   assert.equal(await backupRemote(brain), null)
+})
+
+test("an Ingest with nothing new to file still pushes commits a failed push left behind", async () => {
+  const brain = await brainWithDump()
+  await setBackupRemote(brain, path.join(os.tmpdir(), "git-remote-missing", String(Date.now())))
+  assert.equal((await ingestNow({ brain, apiKey: key, now, runner: files })).push?.ok, false)
+
+  const remote = fs.mkdtempSync(path.join(os.tmpdir(), "git-remote-bare-"))
+  await exec(["init", "--bare", "-b", "main"], remote)
+  await setBackupRemote(brain, remote)
+  const result = await ingestNow({ brain, apiKey: key, now, runner: files })
+
+  assert.equal(result.dumps, 0)
+  assert.deepEqual(result.push, { ok: true })
+  assert.equal((await exec(["rev-parse", "main"], remote)).stdout, (await exec(["rev-parse", "HEAD"], brain)).stdout)
+})
+
+test("credentials are hidden even when the password holds an @", () => {
+  assert.equal(
+    hideCredentials("fatal: unable to access 'https://ada:p@ss@example.com/brain.git/'"),
+    "fatal: unable to access 'https://example.com/brain.git/'",
+  )
 })

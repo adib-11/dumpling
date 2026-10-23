@@ -3,7 +3,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { exec } from "dugite"
 import { checkIngest } from "./check-ingest"
-import { pushBackup } from "./git-remote"
+import { pushBackup, type PushResult } from "./git-remote"
 import { writeIndex } from "./write-index"
 
 const gitName = "Second Brain"
@@ -24,8 +24,7 @@ export type IngestResult = {
   dumps: number
   cost: number
   reason?: string
-  push?: "ok" | "failed"
-  pushError?: string
+  push?: PushResult
 }
 
 type SpawnLike = (
@@ -141,10 +140,9 @@ export async function ingestNow(options: {
     }
 
     record(options.brain, now, status, dumpsFiled, cost, check)
-    // Last and best-effort: a failed push rolls nothing back.
-    const pushed = dumpsFiled > 0 ? await pushBackup(options.brain) : null
-    if (pushed === null) return { status, dumps: dumpsFiled, cost, reason }
-    return { status, dumps: dumpsFiled, cost, reason, ...(pushed.ok ? { push: "ok" } : { push: "failed", pushError: pushed.error }) }
+    // Last and best-effort: a failed push rolls nothing back, and the next Ingest pushes again.
+    const pushed = await pushBackup(options.brain)
+    return { status, dumps: dumpsFiled, cost, reason, ...(pushed && { push: pushed }) }
   } finally {
     running.delete(lock)
   }

@@ -16,6 +16,6 @@ contextBridge.exposeInMainWorld("wizard", {
   openBotFather: (): Promise<void> => ipcRenderer.invoke("wizard:open-botfather"),
   checkToken: (token: string): Promise<TokenResult> => ipcRenderer.invoke("wizard:check-token", token),
   waitStart: (): Promise<ConnectResult> => ipcRenderer.invoke("wizard:wait-start"),
-  backupRemote: (): Promise<string | null> => ipcRenderer.invoke("wizard:backup-remote"),
-  saveRemote: (url: string): Promise<ConnectResult> => ipcRenderer.invoke("wizard:save-remote", url),
+  backupRemote: (): Promise<boolean> => ipcRenderer.invoke("wizard:backup-remote"),
+  saveRemote: (url: string): Promise<{ ok: true } | { ok: false; error: string }> => ipcRenderer.invoke("wizard:save-remote", url),
 })
