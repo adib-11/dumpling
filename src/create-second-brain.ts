@@ -59,6 +59,8 @@ export async function createSecondBrain(folder: string, templatesDir: string): P
     await git(["init", "-b", "main"], folder)
     await git(["config", "user.name", gitName], folder)
     await git(["config", "user.email", gitEmail], folder)
+    // Windows Git checks files out as CRLF when autocrlf is on, so Undo would rewrite the wiki.
+    await git(["config", "core.autocrlf", "false"], folder)
     await git(["add", "-A"], folder)
     await git(["commit", "-m", "create second brain", "--no-gpg-sign"], folder, {
       GIT_AUTHOR_NAME: gitName,
