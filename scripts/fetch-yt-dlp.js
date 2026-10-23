@@ -64,10 +64,11 @@ async function main() {
     )
     fs.mkdirSync(denoDir, { recursive: true })
     // Windows' own tar reads zip files; Git's tar, which may come first on PATH, does not.
+    // Unix calls /usr/bin/unzip by absolute path so PATH is not searched.
     const unzip =
       process.platform === "win32"
         ? spawnSync(path.join(process.env.SystemRoot, "System32", "tar.exe"), ["-xf", zip, "-C", denoDir], { stdio: "inherit" })
-        : spawnSync("unzip", ["-o", "-q", zip, "-d", denoDir], { stdio: "inherit" })
+        : spawnSync("/usr/bin/unzip", ["-o", "-q", zip, "-d", denoDir], { stdio: "inherit" })
     if (unzip.status !== 0) throw new Error(`could not unzip ${zipFile}`)
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true })
