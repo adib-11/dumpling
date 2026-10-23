@@ -7,7 +7,7 @@ import { exec } from "dugite"
 import { createSecondBrain } from "../src/create-second-brain"
 import { drainTelegram, pollTelegram } from "../src/drain-telegram"
 import { telegramBot } from "../src/telegram"
-import { fakeBotApi, message } from "./fake-bot-api"
+import { fakeBotApi, message, type FakeBotApi } from "./fake-bot-api"
 
 process.env.TZ = "Asia/Dhaka"
 const templatesDir = path.join(__dirname, "..", "templates")
@@ -24,6 +24,14 @@ async function setup() {
 
 function inbox(folder: string): string[] {
   return fs.readdirSync(path.join(folder, "inbox")).filter((name) => name.endsWith(".md")).sort()
+}
+
+function sent(api: FakeBotApi): Record<string, unknown>[] {
+  return api.calls.filter((call) => call.method === "sendMessage").map((call) => call.params)
+}
+
+function deleted(api: FakeBotApi): Record<string, unknown>[] {
+  return api.calls.filter((call) => call.method === "deleteMessage").map((call) => call.params)
 }
 
 test("a text message becomes a Dump named from its time", async (t) => {
@@ -172,22 +180,13 @@ test("an /ask message is answered in the chat and never becomes a Dump", async (
 
   assert.deepEqual(questions, ["what do I think about mechanical keyboards?"])
   assert.deepEqual(inbox(folder), [])
-  assert.deepEqual(
-    api.calls.filter((call) => call.method === "sendMessage").map((call) => call.params),
-    [
-      {
-        chat_id: 111,
-        text: "Recall. You like them ([[mechanical-keyboards]]).\n\nFiled up to 2026-10-21",
-      },
-    ],
-  )
+  assert.deepEqual(sent(api), [
+    { chat_id: 111, text: "Recall. You like them ([[mechanical-keyboards]]).\n\nFiled up to 2026-10-21" },
+  ])
   // The reply lands before the question leaves the chat.
   const methods = api.calls.map((call) => call.method)
   assert.ok(methods.indexOf("sendMessage") < methods.lastIndexOf("deleteMessage"))
-  assert.deepEqual(
-    api.calls.filter((call) => call.method === "deleteMessage").map((call) => call.params),
-    [{ chat_id: 111, message_id: 10 }],
-  )
+  assert.deepEqual(deleted(api), [{ chat_id: 111, message_id: 10 }])
   const log = await exec(["log", "--format=%s"], folder)
   assert.equal(log.stdout.trim(), "create second brain")
   const status = await exec(["status", "--porcelain"], folder)
@@ -202,14 +201,8 @@ test("an /ask message without an asker still never becomes a Dump, and says so",
   await drainTelegram(bot, folder, 111)
 
   assert.deepEqual(inbox(folder), [])
-  assert.deepEqual(
-    api.calls.filter((call) => call.method === "sendMessage").map((call) => call.params),
-    [{ chat_id: 111, text: "Could not answer that." }],
-  )
-  assert.deepEqual(
-    api.calls.filter((call) => call.method === "deleteMessage").map((call) => call.params),
-    [{ chat_id: 111, message_id: 10 }],
-  )
+  assert.deepEqual(sent(api), [{ chat_id: 111, text: "Could not answer that." }])
+  assert.deepEqual(deleted(api), [{ chat_id: 111, message_id: 10 }])
 })
 
 test("a failed ask gets a short reply, and the batch still confirms", async (t) => {
@@ -222,14 +215,8 @@ test("a failed ask gets a short reply, and the batch still confirms", async (t) 
   })
   await drainTelegram(bot, folder, 111, offset)
 
-  assert.deepEqual(
-    api.calls.filter((call) => call.method === "sendMessage").map((call) => call.params),
-    [{ chat_id: 111, text: "Could not answer that." }],
-  )
-  assert.deepEqual(
-    api.calls.filter((call) => call.method === "deleteMessage").map((call) => call.params),
-    [{ chat_id: 111, message_id: 10 }],
-  )
+  assert.deepEqual(sent(api), [{ chat_id: 111, text: "Could not answer that." }])
+  assert.deepEqual(deleted(api), [{ chat_id: 111, message_id: 10 }])
   assert.deepEqual(inbox(folder), [])
 })
 
@@ -245,14 +232,8 @@ test("a bare /ask asks for a question without running the ask skill", async (t) 
   })
 
   assert.equal(asked, false)
-  assert.deepEqual(
-    api.calls.filter((call) => call.method === "sendMessage").map((call) => call.params),
-    [{ chat_id: 111, text: "Add a question after /ask." }],
-  )
-  assert.deepEqual(
-    api.calls.filter((call) => call.method === "deleteMessage").map((call) => call.params),
-    [{ chat_id: 111, message_id: 10 }],
-  )
+  assert.deepEqual(sent(api), [{ chat_id: 111, text: "Add a question after /ask." }])
+  assert.deepEqual(deleted(api), [{ chat_id: 111, message_id: 10 }])
 })
 
 test("an /ask from another chat is never answered or deleted", async (t) => {
@@ -267,8 +248,8 @@ test("an /ask from another chat is never answered or deleted", async (t) => {
   })
 
   assert.equal(asked, false)
-  assert.equal(api.calls.some((call) => call.method === "sendMessage"), false)
-  assert.equal(api.calls.some((call) => call.method === "deleteMessage"), false)
+  assert.deepEqual(sent(api), [])
+  assert.deepEqual(deleted(api), [])
   assert.deepEqual(inbox(folder), [])
 })
 
@@ -291,13 +272,10 @@ test("one batch can hold a Dump and a question", async (t) => {
   assert.deepEqual(inbox(folder), ["2026-10-21-140000-telegram.md"])
   const log = await exec(["log", "--format=%s"], folder)
   assert.deepEqual(log.stdout.trim().split("\n"), ["drain: 1 Dumps", "create second brain"])
-  assert.deepEqual(
-    api.calls.filter((call) => call.method === "deleteMessage").map((call) => call.params),
-    [
-      { chat_id: 111, message_id: 10 },
-      { chat_id: 111, message_id: 11 },
-    ],
-  )
+  assert.deepEqual(deleted(api), [
+    { chat_id: 111, message_id: 10 },
+    { chat_id: 111, message_id: 11 },
+  ])
 })
 
 test("an answer longer than one Telegram message is sent in pieces", async (t) => {
@@ -309,10 +287,10 @@ test("an answer longer than one Telegram message is sent in pieces", async (t) =
 
   await drainTelegram(bot, folder, 111, undefined, async () => answer)
 
-  const sent = api.calls.filter((call) => call.method === "sendMessage").map((call) => call.params)
-  assert.equal(sent.length, 2)
-  assert.ok(sent.every((call) => (call.text as string).length <= 4096))
-  assert.equal(sent.map((call) => call.text as string).join("\n"), answer)
+  const pieces = sent(api)
+  assert.equal(pieces.length, 2)
+  assert.ok(pieces.every((call) => (call.text as string).length <= 4096))
+  assert.equal(pieces.map((call) => call.text as string).join("\n"), answer)
 })
 
 test("a new bot's message is saved even when an old Dump has the same message id", async (t) => {
