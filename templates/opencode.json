@@ -1,0 +1,38 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "share": "disabled",
+  "agent": {
+    "ingest": {
+      "description": "Files the Dumps in inbox/ into Pages under vault/wiki/. Run by bin/ingest.",
+      "mode": "primary",
+      "permission": {
+        "edit": { "*": "deny", "vault/wiki/**": "allow", "vault/follow-ups.md": "allow" },
+        "read": { "*": "allow", "vault/private/**": "deny" },
+        "bash": "deny",
+        "task": "deny",
+        "webfetch": "deny",
+        "websearch": "deny"
+      }
+    },
+    "ask": {
+      "description": "Answers a Recall or Persona question from vault/wiki/. Does not write the wiki. Run with --agent ask.",
+      "mode": "primary",
+      "permission": {
+        "edit": {
+          "*": "deny",
+          "persona/corrections.md": "allow",
+          "persona/STYLE.md": "allow"
+        },
+        "read": { "*": "allow", "vault/private/**": "deny" },
+        "list": { "*": "allow", "vault/private/**": "deny" },
+        "glob": { "*": "allow", "vault/private/**": "deny" },
+        "bash": { "*": "deny", "git log -1 --format=%cs -- vault/wiki": "allow" },
+        "shell": { "*": "deny", "git log -1 --format=%cs -- vault/wiki": "allow" },
+        "task": "deny",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "skill": { "*": "deny", "ask": "allow" }
+      }
+    }
+  }
+}

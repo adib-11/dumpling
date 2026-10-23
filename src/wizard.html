@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Second Brain</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, sans-serif;
+        line-height: 1.4;
+      }
+      body {
+        margin: 24px;
+      }
+      h1 {
+        font-size: 1.15rem;
+        font-weight: 650;
+        margin: 0 0 8px;
+      }
+      p {
+        margin: 0 0 16px;
+      }
+      label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+      }
+      input {
+        flex: 1;
+        font: inherit;
+        padding: 6px 8px;
+      }
+      button {
+        font: inherit;
+        padding: 6px 12px;
+      }
+      .actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 16px;
+      }
+      [role="alert"] {
+        color: #9f2d1e;
+        min-height: 1.4em;
+        margin: 12px 0 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Choose a folder</h1>
+    <p>
+      This is where the second brain lives. The app creates the vault and a git history in the
+      folder you pick. The usual place is Documents/Second Brain.
+    </p>
+    <form>
+      <label for="folder">Folder</label>
+      <div class="row">
+        <input id="folder" name="folder" type="text" spellcheck="false" required />
+        <button type="button" id="browse">Browse</button>
+      </div>
+      <p id="error" role="alert"></p>
+      <div class="actions">
+        <button type="submit" id="create">Create</button>
+      </div>
+    </form>
+    <script src="wizard.js"></script>
+  </body>
+</html>
