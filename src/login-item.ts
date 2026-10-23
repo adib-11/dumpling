@@ -8,7 +8,8 @@ export function enableLinuxAutostart(
 ): void {
   const directory = path.join(configHome, "autostart")
   fs.mkdirSync(directory, { recursive: true })
-  const quoted = execPath.includes(" ") ? `"${execPath}"` : execPath
+  // Desktop Entry quoting: escape " ` $ \ inside quotes, then the string-level \ escape, and % as %%.
+  const quoted = `"${execPath.replace(/[\\"`$]/g, "\\$&")}"`.replace(/\\/g, "\\\\").replace(/%/g, "%%")
   const exec = extractAndRun ? `env APPIMAGE_EXTRACT_AND_RUN=1 ${quoted}` : quoted
   const entry = [
     "[Desktop Entry]",
