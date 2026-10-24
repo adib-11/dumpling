@@ -4,7 +4,7 @@ A tray app for a second brain on your own computer. It is free and open source. 
 
 The product spec lives in the private repo [adib-11/second-brain](https://github.com/adib-11/second-brain), file `docs/spec/shareable.md`. This repo is the shareable app.
 
-So far it has the tray, the folder, OpenAI key and bot steps of the wizard, Telegram capture for text, voice and photos, Ingest now and the daily Ingest with Undo, tray health, Recall and Persona questions (`/ask` in Telegram and the tray Ask box), an opt-in git remote for backup, and the release pipeline.
+So far it has the tray, the folder, OpenAI key and bot steps of the wizard, Telegram capture for text, voice and photos, Ingest now with link fetching and the daily Ingest with Undo, tray health, Recall and Persona questions (`/ask` in Telegram and the tray Ask box), an opt-in git remote for backup, and the release pipeline.
 
 ## Download
 
@@ -74,6 +74,8 @@ A message that starts with `/ask` is a question, never a Dump. The app runs the 
 
 The packaged app also registers itself to open at login (macOS and Windows login items; an XDG autostart entry on Linux, aimed at the AppImage when that is how it was started).
 
+Before filing, Ingest now fetches the link of every Dump with a `url` into a `<name>.fetched.md` sidecar beside it, so the agent reads the linked text without going online. Articles go through `defuddle`, PDFs through `pdfjs-dist`, YouTube captions through the bundled `yt-dlp` and `deno`, X posts through fxtwitter, LinkedIn posts and articles through the page's JSON-LD, Apple Podcasts through the feed's transcript, and Instagram and TikTok down to the caption. A link is never fetched twice. A paywall, a 404 or any failure writes `status: unfetched` with the reason and whatever title and description were found. A podcast episode with no published transcript stays unfetched; v1 transcribed its audio with `yap`, which is Mac only.
+
 Ingest now files markdown Dumps dropped in `inbox/`. It runs the bundled opencode binary on the ingest skill, up to 25 Dumps at a time, then moves that chunk to `vault/raw/YYYY/MM/` and commits `ingest: <date>, N Dumps`. The cost of the run is appended to `.state/runs.tsv`. The key is not written into the folder, the log, or the opencode process arguments.
 
 Ingest also runs by itself once a day: at 03:00, or at the first wake after it if the computer was asleep, right after a Telegram drain. A chunk fails on a non-zero exit, a 20 minute timeout, or no change in `vault/wiki/`. Its edits go to a git stash named `failed ingest <time>` (never a reset), its Dumps stay in `inbox/`, and a desktop notification names the stash. A Dump that failed twice is retried alone, and one that fails twice alone moves to `inbox/failed/`. The tray icon gets a red dot after a failed Ingest and an amber dot when Telegram has not drained for 20 h. Undo last Ingest reverts the newest `ingest:` commit, which restores the wiki and puts its Dumps back in `inbox/`; an Undo that would overwrite a later edit changes nothing.
@@ -92,5 +94,7 @@ npm test
 npm run typecheck
 npm start
 ```
+
+`node scripts/fetch-opencode.js` and `node scripts/fetch-yt-dlp.js` put the bundled binaries in `vendor/`. `node scripts/fetch-link-live.js` (after `npm run build`) fetches one real link per route and prints each result; it needs the network, so it is not part of `npm test`.
 
 `npm start` opens the wizard and the tray. It does not register a login item; that happens in the packaged app.

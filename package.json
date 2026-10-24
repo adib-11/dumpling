@@ -30,7 +30,8 @@
     "files": [
       "dist/**/*",
       "package.json",
-      "!dist/**/*.map"
+      "!dist/**/*.map",
+      "!**/node_modules/@napi-rs/**"
     ],
     "extraResources": [
       {
@@ -44,6 +45,14 @@
       {
         "from": "vendor/opencode",
         "to": "opencode"
+      },
+      {
+        "from": "vendor/yt-dlp",
+        "to": "yt-dlp"
+      },
+      {
+        "from": "vendor/deno",
+        "to": "deno"
       }
     ],
     "asarUnpack": [
@@ -96,7 +105,9 @@
     "typescript": "^7.0.2"
   },
   "dependencies": {
+    "defuddle": "^0.19.5",
     "dugite": "^3.3.1",
-    "jpeg-js": "^0.4.4"
+    "jpeg-js": "^0.4.4",
+    "pdfjs-dist": "^6.4.299"
   }
 }

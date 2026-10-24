@@ -5,6 +5,7 @@ import { exec } from "dugite"
 import { lockBrain } from "./brain-lock"
 import { checkIngest } from "./check-ingest"
 import { commitNewDumps } from "./drain-telegram"
+import { fetchLinks, type LinkTools } from "./fetch-link"
 import { pushBackup, type PushResult } from "./git-remote"
 import { type Bot } from "./telegram"
 import { writeIndex } from "./write-index"
@@ -68,6 +69,7 @@ export async function ingestNow(options: {
   brain: string
   apiKey: string
   runner: AgentRunner
+  links?: LinkTools
   today?: string
   now?: Date
   timeoutMs?: number
@@ -149,6 +151,12 @@ export async function ingestNow(options: {
         await commitOwnerEdits(options.brain)
         // In git before the agent runs, so Undo last Ingest can put them back in inbox/.
         await commitNewDumps(options.brain)
+      }
+      if (options.links) {
+        await fetchLinks(
+          pending.map((dump) => path.join(options.brain, dump)),
+          options.links,
+        )
       }
       if (pending.length > 0 && options.apiKey.trim() === "") {
         // Never counted against the Dumps.
