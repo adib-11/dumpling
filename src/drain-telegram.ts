@@ -1,10 +1,19 @@
 import fs from "node:fs"
 import path from "node:path"
 import { decode, encode } from "jpeg-js"
+import { brainLocked } from "./brain-lock"
 import { git } from "./create-second-brain"
 import { longPollSeconds, type Bot, type TelegramFile, type TelegramMessage, type Update } from "./telegram"
 
 // Turns the Owner's Telegram messages into Dumps in inbox/, following bin/drain-telegram (spec §5).
+// A message starting with /ask is a question, not a Dump: it is answered in the chat (spec §4).
+
+// Answers one question with the ask skill's reply, or throws. Kept a callback so the drain stays
+// testable without opencode.
+export type Asker = (question: string) => Promise<string>
+
+// Telegram caps one message at 4096 characters; split answers a little under that.
+const telegramMessageChars = 4000
 
 // Voice is transcribed through this. Tests pass a fake; the app passes the Owner's key. Nothing here calls OpenAI itself.
 export type MediaReader = {
@@ -21,6 +30,7 @@ export async function drainTelegram(
   folder: string,
   chat: number,
   offset?: number,
+  ask?: Asker,
   media?: MediaReader,
   onUnsaved?: (notice: string | null) => void,
 ): Promise<number | undefined> {
@@ -30,38 +40,48 @@ export async function drainTelegram(
   for (const update of updates) {
     const message = update.message
     if (message?.chat.id !== chat) continue
+    if (message.text && /^\/ask\b/.test(message.text)) {
+      // Answered before the offset confirms, so a crash re-asks rather than losing the question.
+      await answerQuestion(bot, chat, message.text, ask)
+      toDelete.push(message.message_id)
+      continue
+    }
     const outcome = await capture(bot, folder, message, known, media)
     if (outcome.status === "retry") {
-      if (toDelete.length) await commitNewDumps(folder)
+      if (toDelete.length) await commitUnlessLocked(folder)
       await deleteSaved(bot, chat, toDelete)
       onUnsaved?.(outcome.notice)
       return update.update_id
     }
     if (outcome.status === "saved" || outcome.status === "duplicate") toDelete.push(message.message_id)
   }
-  if (updates.length) await commitNewDumps(folder)
+  if (updates.length) await commitUnlessLocked(folder)
   await deleteSaved(bot, chat, toDelete)
   onUnsaved?.(null)
   return updates.length ? updates[updates.length - 1].update_id + 1 : offset
 }
 
 // Long-polls the bot until stopped. A failed poll is retried; its batch stays unconfirmed, so nothing is lost.
+// onDrained runs after each successful poll.
 export async function pollTelegram(
   bot: Bot,
   folder: string,
   chat: number,
   stop: AbortSignal,
+  ask?: Asker,
   retryMs = 5000,
+  onDrained: () => void = () => {},
   options?: { media?: MediaReader; onUnsaved?: (notice: string | null) => void },
 ): Promise<void> {
   let offset: number | undefined
   while (!stop.aborted) {
     let blocked = false
     try {
-      offset = await drainTelegram(bot, folder, chat, offset, options?.media, (notice) => {
+      offset = await drainTelegram(bot, folder, chat, offset, ask, options?.media, (notice) => {
         blocked = notice !== null
         options?.onUnsaved?.(notice)
       })
+      onDrained()
       // The failed update is still waiting, so getUpdates would return it at once. Wait before spending another call.
       if (blocked && !stop.aborted) await new Promise((resolve) => setTimeout(resolve, retryMs))
     } catch (error) {
@@ -130,7 +150,7 @@ async function capture(
   if (known.body.has(`${message.message_id}\n${message.text}`)) return { status: "duplicate" }
   const stem = freeStem(folder, message.date)
   const url = /https?:\/\/\S+/.exec(message.text)?.[0]
-  writeDump(folder, stem, renderDump(message, url ? "link" : "text", message.text, url ? [`url: ${url}`] : []))
+  writeDump(folder, stem, renderDump(folder, message, url ? "link" : "text", message.text, url ? [`url: ${url}`] : []))
   known.body.add(`${message.message_id}\n${message.text}`)
   return { status: "saved" }
 }
@@ -195,7 +215,7 @@ async function captureImage(
     writeDump(
       folder,
       stem,
-      renderDump(message, "image", body, [
+      renderDump(folder, message, "image", body, [
         `image: ${stem}.jpg`,
         `telegram_message_id: ${message.message_id}`,
         `telegram_file_id: ${fileId}`,
@@ -259,15 +279,20 @@ function remember(
   writeDump(
     folder,
     stem,
-    renderDump(message, kind, body, [`telegram_message_id: ${message.message_id}`, `telegram_file_id: ${fileId}`]),
+    renderDump(folder, message, kind, body, [`telegram_message_id: ${message.message_id}`, `telegram_file_id: ${fileId}`]),
   )
   known.file.add(`${message.message_id}\n${fileId}`)
   known.body.add(`${message.message_id}\n${body}`)
 }
 
-function renderDump(message: TelegramMessage, kind: string, body: string, fields: string[]): string {
+// A reply to a Dump becomes its Addendum; a reply to anything else quotes the first line it answers.
+function renderDump(folder: string, message: TelegramMessage, kind: string, body: string, fields: string[]): string {
   const id = `telegram_message_id: ${message.message_id}`
   const lines = fields.includes(id) ? fields : [...fields, id]
+  const replied = message.reply_to_message
+  const addendumTo = replied ? dumpOf(folder, replied.message_id) : undefined
+  if (addendumTo) lines.push(`addendum_to: ${addendumTo}`)
+  else if (replied) body = `re ${(replied.text ?? replied.caption ?? "").split("\n")[0]}\n\n${body}`
   return ["---", `captured: ${localTime(message.date).iso}`, "device: telegram", `kind: ${kind}`, ...lines, "---", body, ""].join(
     "\n",
   )
@@ -307,8 +332,60 @@ async function deleteSaved(bot: Bot, chat: number, ids: number[]): Promise<void>
   }
 }
 
+// Answers one /ask message in the chat. A question the app cannot answer still gets a reply, so it never
+// quietly disappears; the question is then deleted from the chat like a Dump.
+async function answerQuestion(bot: Bot, chat: number, text: string, ask: Asker | undefined): Promise<void> {
+  const question = text.replace(/^\/ask\s*/, "").trim()
+  let answer = "Add a question after /ask."
+  if (question !== "") {
+    try {
+      if (!ask) throw new Error("no asker")
+      answer = await ask(question)
+    } catch (error) {
+      console.error("drain-telegram: ask failed", error)
+      answer = "Could not answer that."
+    }
+  }
+  try {
+    await sendAnswer(bot, chat, answer)
+  } catch (error) {
+    // Telegram itself would not take the reply. The answer is lost; the Owner asks again.
+    console.error("drain-telegram: could not send the answer", error)
+  }
+}
+
+async function sendAnswer(bot: Bot, chat: number, text: string): Promise<void> {
+  for (const piece of splitMessage(text)) await bot("sendMessage", { chat_id: chat, text: piece })
+}
+
+function splitMessage(text: string): string[] {
+  if (text.length <= telegramMessageChars) return [text]
+  const pieces: string[] = []
+  let rest = text
+  while (rest.length > telegramMessageChars) {
+    // Prefer a line break, so a quote or citation is never cut mid-line. The break itself is dropped;
+    // sending the pieces in order reads the same as the whole answer.
+    const cut = rest.lastIndexOf("\n", telegramMessageChars)
+    if (cut >= telegramMessageChars / 2) {
+      pieces.push(rest.slice(0, cut))
+      rest = rest.slice(cut + 1)
+    } else {
+      pieces.push(rest.slice(0, telegramMessageChars))
+      rest = rest.slice(telegramMessageChars)
+    }
+  }
+  pieces.push(rest)
+  return pieces
+}
+
+// During an Ingest or Undo the new Dumps wait in inbox/ uncommitted, so two git commands never race on the
+// index. The next drain or Ingest commits them.
+async function commitUnlessLocked(folder: string): Promise<void> {
+  if (!brainLocked(folder)) await commitNewDumps(folder)
+}
+
 // Commits every Dump not yet in git, including any a failed commit left behind, and nothing else.
-async function commitNewDumps(folder: string): Promise<void> {
+export async function commitNewDumps(folder: string): Promise<void> {
   const status = await git(["status", "--porcelain", "-z", "--untracked-files=all", "--", "inbox"], folder)
   const fresh = status
     .split("\0")
@@ -318,6 +395,30 @@ async function commitNewDumps(folder: string): Promise<void> {
   if (!dumps.length) return
   await git(["add", "--", ...fresh], folder)
   await git(["commit", "-m", `drain: ${dumps.length} Dumps`, "--no-gpg-sign", "--", ...fresh], folder)
+}
+
+// The Dump a reply points at. A reply to the bot's question is in vault/telegram-questions.md
+// ("<question id> <dump name>"), because that message is not a Dump.
+// ponytail: scans every Dump per reply; index message ids if vault/raw/ grows past tens of thousands.
+function dumpOf(folder: string, messageId: number): string | undefined {
+  const questions = path.join(folder, "vault", "telegram-questions.md")
+  if (fs.existsSync(questions)) {
+    for (const line of fs.readFileSync(questions, "utf8").split("\n")) {
+      const [id, name] = line.trim().split(/\s+/)
+      if (id === String(messageId) && name) return name
+    }
+  }
+  const needle = `telegram_message_id: ${messageId}`
+  for (const dir of ["inbox", "vault/raw"]) {
+    const root = path.join(folder, dir)
+    if (!fs.existsSync(root)) continue
+    for (const name of fs.readdirSync(root, { recursive: true, encoding: "utf8" })) {
+      if (!name.endsWith(".md")) continue
+      const text = fs.readFileSync(path.join(root, name), "utf8")
+      if (text.split("\n").includes(needle)) return path.basename(name, ".md")
+    }
+  }
+  return undefined
 }
 
 // Each saved message as "<telegram_message_id>\n<text>", plus "<id>\n<file id>" for voice and photos.

@@ -5,10 +5,11 @@ import path from "node:path"
 import test from "node:test"
 import { exec } from "dugite"
 import { decode, encode } from "jpeg-js"
+import { lockBrain } from "../src/brain-lock"
 import { createSecondBrain } from "../src/create-second-brain"
 import { drainTelegram, pollTelegram } from "../src/drain-telegram"
 import { telegramBot } from "../src/telegram"
-import { fakeBotApi, message } from "./fake-bot-api"
+import { fakeBotApi, message, type FakeBotApi } from "./fake-bot-api"
 
 process.env.TZ = "Asia/Dhaka"
 const templatesDir = path.join(__dirname, "..", "templates")
@@ -25,6 +26,14 @@ async function setup() {
 
 function inbox(folder: string): string[] {
   return fs.readdirSync(path.join(folder, "inbox")).filter((name) => name.endsWith(".md")).sort()
+}
+
+function sent(api: FakeBotApi): Record<string, unknown>[] {
+  return api.calls.filter((call) => call.method === "sendMessage").map((call) => call.params)
+}
+
+function deleted(api: FakeBotApi): Record<string, unknown>[] {
+  return api.calls.filter((call) => call.method === "deleteMessage").map((call) => call.params)
 }
 
 test("a text message becomes a Dump named from its time", async (t) => {
@@ -129,10 +138,10 @@ test("a Bangla and English voice note becomes a text Dump and no audio is kept",
     },
   }
 
-  const offset = await drainTelegram(bot, folder, 111, undefined, media)
+  const offset = await drainTelegram(bot, folder, 111, undefined, undefined, media)
   // A restart polls with no offset. The note is still unconfirmed, so it must not be transcribed again.
-  await drainTelegram(bot, folder, 111, undefined, media)
-  await drainTelegram(bot, folder, 111, offset, media)
+  await drainTelegram(bot, folder, 111, undefined, undefined, media)
+  await drainTelegram(bot, folder, 111, offset, undefined, media)
 
   assert.deepEqual(inbox(folder), ["2026-10-21-140000-telegram.md"])
   assert.equal(
@@ -179,13 +188,13 @@ test("a failed transcription leaves the message in the chat and tells the tray",
     },
   }
 
-  const next = await drainTelegram(bot, folder, 111, undefined, media, (notice) => notices.push(notice))
+  const next = await drainTelegram(bot, folder, 111, undefined, undefined, media, (notice) => notices.push(notice))
 
   assert.equal(next, 21)
   assert.deepEqual(inbox(folder), [])
   assert.equal(api.calls.some((call) => call.method === "deleteMessage"), false)
   assert.deepEqual(notices, ["Voice note not transcribed"])
-  await drainTelegram(bot, folder, 111, next, media)
+  await drainTelegram(bot, folder, 111, next, undefined, media)
   assert.equal(api.confirmed, 21)
   assert.deepEqual(inbox(folder), [])
 })
@@ -205,6 +214,7 @@ test("a voice note still failing after 12 hours is kept as a placeholder so its 
     bot,
     folder,
     111,
+    undefined,
     undefined,
     {
       async transcribe() {
@@ -234,7 +244,7 @@ test("a failed transcription waits for the next poll instead of calling the mode
   api.files.set("vo", Buffer.from("OggS-voice"))
   api.updates = [message(21, 31, now, { voice: { file_id: "vo", file_size: 900 } })]
   let transcripts = 0
-  void pollTelegram(bot, folder, 111, stop.signal, 500, {
+  void pollTelegram(bot, folder, 111, stop.signal, undefined, 500, undefined, {
     media: {
       async transcribe() {
         transcripts++
@@ -267,7 +277,7 @@ test("a photo of a page becomes a Dump with a 1200 px JPEG and the text read fro
     }),
   ]
 
-  await drainTelegram(bot, folder, 111, undefined, {
+  await drainTelegram(bot, folder, 111, undefined, undefined, {
     async transcribe() {
       throw new Error("not a voice note")
     },
@@ -315,7 +325,7 @@ test("a photo still unreadable after 12 hours is kept as a placeholder so its fi
   api.files.set("ph", wideJpeg(80, 40))
   api.updates = [message(25, 35, old, { caption: "the page", photo: [{ file_id: "ph", width: 80, file_size: 40 }] })]
 
-  await drainTelegram(bot, folder, 111, undefined, {
+  await drainTelegram(bot, folder, 111, undefined, undefined, {
     async transcribe() {
       return ""
     },
@@ -341,6 +351,7 @@ test("a photo that cannot be read stays in the chat", async (t) => {
     bot,
     folder,
     111,
+    undefined,
     undefined,
     {
       async transcribe() {
@@ -438,7 +449,7 @@ test("polling keeps going after a failed poll and saves new messages as they arr
   t.after(() => stop.abort())
   api.token = "999:other-token"
 
-  void pollTelegram(bot, folder, 111, stop.signal, 10)
+  void pollTelegram(bot, folder, 111, stop.signal, undefined, 10)
   await until(() => api.calls.length > 0)
   api.token = "123:secret-token"
   api.updates.push(message(1, 10, at, { text: "sent from the phone" }))
@@ -451,6 +462,133 @@ async function until(done: () => boolean): Promise<void> {
   for (let i = 0; i < 200 && !done(); i++) await new Promise((resolve) => setTimeout(resolve, 10))
   assert.ok(done())
 }
+
+test("an /ask message is answered in the chat and never becomes a Dump", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  api.updates = [message(1, 10, at, { text: "/ask what do I think about mechanical keyboards?" })]
+  const questions: string[] = []
+
+  const offset = await drainTelegram(bot, folder, 111, undefined, async (question) => {
+    questions.push(question)
+    return "Recall. You like them ([[mechanical-keyboards]]).\n\nFiled up to 2026-10-21"
+  })
+  await drainTelegram(bot, folder, 111, offset)
+
+  assert.deepEqual(questions, ["what do I think about mechanical keyboards?"])
+  assert.deepEqual(inbox(folder), [])
+  assert.deepEqual(sent(api), [
+    { chat_id: 111, text: "Recall. You like them ([[mechanical-keyboards]]).\n\nFiled up to 2026-10-21" },
+  ])
+  // The reply lands before the question leaves the chat.
+  const methods = api.calls.map((call) => call.method)
+  assert.ok(methods.indexOf("sendMessage") < methods.lastIndexOf("deleteMessage"))
+  assert.deepEqual(deleted(api), [{ chat_id: 111, message_id: 10 }])
+  const log = await exec(["log", "--format=%s"], folder)
+  assert.equal(log.stdout.trim(), "create second brain")
+  const status = await exec(["status", "--porcelain"], folder)
+  assert.equal(status.stdout, "")
+})
+
+test("an /ask message without an asker still never becomes a Dump, and says so", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  api.updates = [message(1, 10, at, { text: "/ask what do I think about X?" })]
+
+  await drainTelegram(bot, folder, 111)
+
+  assert.deepEqual(inbox(folder), [])
+  assert.deepEqual(sent(api), [{ chat_id: 111, text: "Could not answer that." }])
+  assert.deepEqual(deleted(api), [{ chat_id: 111, message_id: 10 }])
+})
+
+test("a failed ask gets a short reply, and the batch still confirms", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  api.updates = [message(1, 10, at, { text: "/ask what do I know about Y?" })]
+
+  const offset = await drainTelegram(bot, folder, 111, undefined, async () => {
+    throw new Error("runner exited 1")
+  })
+  await drainTelegram(bot, folder, 111, offset)
+
+  assert.deepEqual(sent(api), [{ chat_id: 111, text: "Could not answer that." }])
+  assert.deepEqual(deleted(api), [{ chat_id: 111, message_id: 10 }])
+  assert.deepEqual(inbox(folder), [])
+})
+
+test("a bare /ask asks for a question without running the ask skill", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  api.updates = [message(1, 10, at, { text: "/ask" })]
+  let asked = false
+
+  await drainTelegram(bot, folder, 111, undefined, async () => {
+    asked = true
+    return "never sent"
+  })
+
+  assert.equal(asked, false)
+  assert.deepEqual(sent(api), [{ chat_id: 111, text: "Add a question after /ask." }])
+  assert.deepEqual(deleted(api), [{ chat_id: 111, message_id: 10 }])
+})
+
+test("an /ask from another chat is never answered or deleted", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  api.updates = [message(1, 10, at, { text: "/ask what does adib think?" }, 222)]
+  let asked = false
+
+  await drainTelegram(bot, folder, 111, undefined, async () => {
+    asked = true
+    return "never"
+  })
+
+  assert.equal(asked, false)
+  assert.deepEqual(sent(api), [])
+  assert.deepEqual(deleted(api), [])
+  assert.deepEqual(inbox(folder), [])
+})
+
+test("one batch can hold a Dump and a question", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  api.updates = [
+    message(1, 10, at, { text: "remember the milk" }),
+    message(2, 11, at + 60, { text: "/ask what do I think about milk?" }),
+  ]
+  const questions: string[] = []
+
+  const offset = await drainTelegram(bot, folder, 111, undefined, async (question) => {
+    questions.push(question)
+    return "Recall. You buy it ([[milk]]).\n\nFiled up to 2026-10-21"
+  })
+  await drainTelegram(bot, folder, 111, offset)
+
+  assert.deepEqual(questions, ["what do I think about milk?"])
+  assert.deepEqual(inbox(folder), ["2026-10-21-140000-telegram.md"])
+  const log = await exec(["log", "--format=%s"], folder)
+  assert.deepEqual(log.stdout.trim().split("\n"), ["drain: 1 Dumps", "create second brain"])
+  assert.deepEqual(deleted(api), [
+    { chat_id: 111, message_id: 10 },
+    { chat_id: 111, message_id: 11 },
+  ])
+})
+
+test("an answer longer than one Telegram message is sent in pieces", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  api.updates = [message(1, 10, at, { text: "/ask show me everything about keyboards" })]
+  const line = "a line of the answer, quoted from a Dump, with its citation\n"
+  const answer = `Recall.\n${line.repeat(100)}Filed up to 2026-10-21`
+
+  await drainTelegram(bot, folder, 111, undefined, async () => answer)
+
+  const pieces = sent(api)
+  assert.equal(pieces.length, 2)
+  assert.ok(pieces.every((call) => (call.text as string).length <= 4096))
+  assert.equal(pieces.map((call) => call.text as string).join("\n"), answer)
+})
 
 test("a new bot's message is saved even when an old Dump has the same message id", async (t) => {
   const { folder, api, bot } = await setup()
@@ -491,3 +629,35 @@ function files(folder: string): string[] {
     .filter((name) => !name.startsWith(".git/"))
     .sort()
 }
+
+test("polling reports each successful drain, after its Dumps are saved", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  const stop = new AbortController()
+  t.after(() => stop.abort())
+  api.token = "999:other-token"
+  const drained: number[] = []
+
+  void pollTelegram(bot, folder, 111, stop.signal, undefined, 10, () => drained.push(inbox(folder).length))
+  await until(() => api.calls.length > 1)
+  assert.deepEqual(drained, [])
+  api.updates.push(message(1, 10, at, { text: "sent from the phone" }))
+  api.token = "123:secret-token"
+
+  await until(() => drained.length > 0)
+  assert.equal(drained[0], 1)
+})
+
+test("during an Ingest or Undo a drain saves the Dump but leaves git alone", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  api.updates = [message(1, 10, at, { text: "while filing" })]
+  const unlock = lockBrain(folder)
+  t.after(() => unlock?.())
+
+  await drainTelegram(bot, folder, 111)
+
+  assert.deepEqual(inbox(folder), ["2026-10-21-140000-telegram.md"])
+  const status = await exec(["status", "--porcelain"], folder)
+  assert.equal(status.stdout, "?? inbox/2026-10-21-140000-telegram.md\n")
+})

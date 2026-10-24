@@ -4,7 +4,7 @@ A tray app for a second brain on your own computer. It is free and open source. 
 
 The product spec lives in the private repo [adib-11/second-brain](https://github.com/adib-11/second-brain), file `docs/spec/shareable.md`. This repo is the shareable app.
 
-So far it has the tray, the folder, OpenAI key and bot steps of the wizard, Telegram capture for text, voice and photos, Ingest now, an opt-in git remote for backup, and the release pipeline.
+So far it has the tray, the folder, OpenAI key and bot steps of the wizard, Telegram capture for text, voice and photos, Ingest now and the daily Ingest with Undo, tray health, Recall and Persona questions (`/ask` in Telegram and the tray Ask box), an opt-in git remote for backup, and the release pipeline.
 
 ## Download
 
@@ -53,7 +53,7 @@ If FUSE is unavailable, `APPIMAGE_EXTRACT_AND_RUN=1 ./Second-Brain-*-x86_64.AppI
 
 ## First launch
 
-The app sits in the menu bar on Mac and in the system tray on Windows and Linux. The menu shows the folder, Ingest now, Connect Telegram… until a bot is connected, Backup remote…, and Quit.
+The app sits in the menu bar on Mac and in the system tray on Windows and Linux. The menu shows the folder, Ingest now, Undo last Ingest, Ask…, Connect Telegram… until a bot is connected, Backup remote…, and Quit.
 
 Backup remote… takes a git remote URL. After each Ingest the app pushes to it, last and best-effort. A failed push rolls nothing back: the menu shows "Backup push failed", the app notifies once, and the next Ingest pushes again. Save a blank URL to stop pushing.
 
@@ -70,9 +70,13 @@ Next the window asks for a Telegram bot. Open BotFather, send `/newbot`, and pas
 
 While the computer is awake, the app long-polls the bot. Each text message becomes a Dump in `inbox/` (`device: telegram`, with its `telegram_message_id`) and is deleted from the chat. A voice note is transcribed with `gpt-transcribe` on the Owner's key and saved as text only; the audio is not kept. A photo is saved as a JPEG about 1200 px wide beside its Dump, and the text read from it by `gpt-5.6-luna` is kept under `## Image text`. A file over 20 MB, or any other file that is not a photo, becomes a placeholder Dump and is not downloaded. A voice note or photo that cannot be saved stays in the chat, and the tray names it, until a later poll. Each batch is a commit, `drain: N Dumps`. Messages from any other chat are ignored.
 
+A message that starts with `/ask` is a question, never a Dump. The app runs the `ask` skill on it and replies in the chat, citing Page names, ending with `Filed up to <date>`. Nothing is written to `inbox/` or the wiki; the question is deleted from the chat like a Dump. Ask… in the tray opens the same thing in a window. A question the app cannot answer gets the reply "Could not answer that." Recall answers come straight from the wiki. Persona answers come in two parts, "What you've said" then "Guess"; without `persona/STYLE.md` the voice isn't available yet, and the draft is plain and neutral.
+
 The packaged app also registers itself to open at login (macOS and Windows login items; an XDG autostart entry on Linux, aimed at the AppImage when that is how it was started).
 
 Ingest now files markdown Dumps dropped in `inbox/`. It runs the bundled opencode binary on the ingest skill, up to 25 Dumps at a time, then moves that chunk to `vault/raw/YYYY/MM/` and commits `ingest: <date>, N Dumps`. The cost of the run is appended to `.state/runs.tsv`. The key is not written into the folder, the log, or the opencode process arguments.
+
+Ingest also runs by itself once a day: at 03:00, or at the first wake after it if the computer was asleep, right after a Telegram drain. A chunk fails on a non-zero exit, a 20 minute timeout, or no change in `vault/wiki/`. Its edits go to a git stash named `failed ingest <time>` (never a reset), its Dumps stay in `inbox/`, and a desktop notification names the stash. A Dump that failed twice is retried alone, and one that fails twice alone moves to `inbox/failed/`. The tray icon gets a red dot after a failed Ingest and an amber dot when Telegram has not drained for 20 h. Undo last Ingest reverts the newest `ingest:` commit, which restores the wiki and puts its Dumps back in `inbox/`; an Undo that would overwrite a later edit changes nothing.
 
 ## Templates
 

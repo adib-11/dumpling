@@ -14,6 +14,7 @@ export type TelegramMessage = {
   chat: { id: number; type: string }
   text?: string
   caption?: string
+  reply_to_message?: { message_id: number; text?: string; caption?: string }
   voice?: TelegramFile
   audio?: TelegramFile
   photo?: TelegramFile[]
@@ -63,6 +64,11 @@ export function telegramBot(token: string, base = "https://api.telegram.org"): B
     return Buffer.from(await response.arrayBuffer())
   }
   return bot
+}
+
+// What ingestNow needs to send Follow-ups. The daily and the manual Ingest both pass it.
+export function ingestBot(token: string | null, chat: number | null, base?: string): { bot?: Bot; chat?: number } {
+  return token && chat !== null ? { bot: telegramBot(token, base), chat } : {}
 }
 
 // Waits for the Owner's /start in a private chat and returns that chat, the only one the app accepts.
