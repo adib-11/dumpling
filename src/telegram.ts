@@ -33,6 +33,11 @@ export function telegramBot(token: string, base = "https://api.telegram.org"): B
   }
 }
 
+// What ingestNow needs to send Follow-ups. The daily and the manual Ingest both pass it.
+export function ingestBot(token: string | null, chat: number | null, base?: string): { bot?: Bot; chat?: number } {
+  return token && chat !== null ? { bot: telegramBot(token, base), chat } : {}
+}
+
 // Waits for the Owner's /start in a private chat and returns that chat, the only one the app accepts.
 export async function connectBot(bot: Bot, stop: AbortSignal): Promise<number> {
   let offset: number | undefined

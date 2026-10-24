@@ -203,7 +203,13 @@ export async function ingestNow(options: {
     }
 
     if (options.bot && options.chat !== undefined) {
-      followUp = await sendFollowUps(options.brain, options.bot, options.chat)
+      try {
+        followUp = await sendFollowUps(options.brain, options.bot, options.chat)
+      } catch (error) {
+        // The Dumps are filed. The run is still recorded and pushed, and the next Ingest sends what is left.
+        followUp = { sent: 0, partial: true }
+        notify(`Follow-ups failed: ${error instanceof Error ? error.message : error}`)
+      }
     }
     record(options.brain, now, [status, dumpsFiled, cost.toFixed(4), check, stash ?? "", reason ?? ""])
     // Last and best-effort: a failed push rolls nothing back, and the next Ingest pushes again.

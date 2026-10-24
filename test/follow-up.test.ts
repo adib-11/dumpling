@@ -8,7 +8,7 @@ import { checkIngest } from "../src/check-ingest"
 import { createSecondBrain } from "../src/create-second-brain"
 import { drainTelegram } from "../src/drain-telegram"
 import { ingestNow, type AgentRun } from "../src/ingest-now"
-import { telegramBot } from "../src/telegram"
+import { ingestBot, telegramBot } from "../src/telegram"
 import { fakeBotApi, message } from "./fake-bot-api"
 
 process.env.TZ = "Asia/Dhaka"
@@ -297,6 +297,60 @@ test("a failed send stays queued, files the Dump, and is reported partial", asyn
   assert.equal(fs.readFileSync(filed, "utf8").includes("telegram_question_id"), false)
   assert.match(fs.readFileSync(path.join(folder, "vault", "follow-ups.md"), "utf8"), new RegExp(name))
   assert.equal(fs.existsSync(path.join(folder, "vault", "telegram-questions.md")), false)
+})
+
+test("the bot and chat the daily and manual Ingest pass send the Follow-up, and no bot sends nothing", async (t) => {
+  const name = "2026-10-22-120000-telegram"
+  const { folder, api } = await setup()
+  t.after(api.close)
+  assert.deepEqual(ingestBot(api.token, null), {})
+  assert.deepEqual(ingestBot(null, 111), {})
+  fs.writeFileSync(
+    path.join(folder, "inbox", `${name}.md`),
+    "---\ncaptured: 2026-10-22T12:00:00+06:00\ndevice: telegram\nkind: text\ntelegram_message_id: 44\n---\nwatched Heat\n",
+  )
+
+  const result = await ingestNow({
+    brain: folder,
+    apiKey: key,
+    today,
+    now,
+    runner: filingRunner(folder, `# Follow-ups\n${name}\t${question}\n`),
+    ...ingestBot(api.token, 111, api.url),
+  })
+
+  assert.equal(result.followUp?.sent, 1)
+  assert.equal(api.calls.filter((call) => call.method === "sendMessage").length, 1)
+})
+
+test("a Follow-up commit that fails still records the run and reports it partial", async (t) => {
+  const name = "2026-10-22-130000-telegram"
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  const hook = path.join(folder, ".git", "hooks", "commit-msg")
+  fs.writeFileSync(hook, '#!/bin/sh\ngrep -q "^follow-up" "$1" && exit 1\nexit 0\n', { mode: 0o755 })
+  fs.writeFileSync(
+    path.join(folder, "inbox", `${name}.md`),
+    "---\ncaptured: 2026-10-22T13:00:00+06:00\ndevice: telegram\nkind: text\ntelegram_message_id: 45\n---\nwatched Ran\n",
+  )
+  const notes: string[] = []
+
+  const result = await ingestNow({
+    brain: folder,
+    apiKey: key,
+    today,
+    now,
+    bot,
+    chat: 111,
+    notify: (text) => notes.push(text),
+    runner: filingRunner(folder, `# Follow-ups\n${name}\t${question}\n`),
+  })
+
+  assert.equal(result.status, "ok")
+  assert.equal(result.dumps, 1)
+  assert.equal(result.followUp?.partial, true)
+  assert.ok(notes.some((note) => note.startsWith("Follow-ups failed:")))
+  assert.match(fs.readFileSync(path.join(folder, ".state", "runs.tsv"), "utf8"), /\tok\t1\t/)
 })
 
 test("the ingest skill queues one Follow-up and files an Addendum by the Addendum's date", () => {

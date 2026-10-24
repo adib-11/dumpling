@@ -21,7 +21,7 @@ import { backupRemote, hideCredentials, setBackupRemote } from "./git-remote"
 import { ingestNow, lastIngestStatus, spawnOpencode, undoLastIngest, type IngestResult } from "./ingest-now"
 import { enableLinuxAutostart } from "./login-item"
 import { claimDailyIngest, readDrain, rememberDrain } from "./schedule"
-import { connectBot, telegramBot } from "./telegram"
+import { connectBot, ingestBot, telegramBot } from "./telegram"
 import { trayHealth, trayMenuItems, type TrayHealth, type TrayMenuItem } from "./tray-menu"
 
 const openaiKeysUrl = "https://platform.openai.com/api-keys"
@@ -275,14 +275,12 @@ async function runIngest(fromTray: boolean): Promise<void> {
     return
   }
   try {
-    const token = loadToken()
-    const chat = readTelegramChat(configPath())
     const result = await ingestNow({
       brain: folder,
       apiKey,
       runner: (run) => spawnOpencode(bin, run),
       notify: (text) => notify(redact(text, apiKey)),
-      ...(token && chat !== null ? { bot: telegramBot(token), chat } : {}),
+      ...ingestBot(loadToken(), readTelegramChat(configPath())),
     })
     if (result.status === "failed") console.error(redact(result.reason ?? "Ingest failed.", apiKey))
     showPush(result)
