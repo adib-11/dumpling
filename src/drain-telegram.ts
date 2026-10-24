@@ -100,23 +100,17 @@ export async function pollTelegram(
 // quietly disappears; the question is then deleted from the chat like a Dump.
 async function answerQuestion(bot: Bot, chat: number, text: string, ask: Asker | undefined): Promise<void> {
   const question = text.replace(/^\/ask\s*/, "").trim()
-  try {
-    if (question === "") {
-      await sendAnswer(bot, chat, "Add a question after /ask.")
-      return
-    }
-    if (!ask) {
-      await sendAnswer(bot, chat, "Could not answer that.")
-      return
-    }
-    let answer: string
+  let answer = "Add a question after /ask."
+  if (question !== "") {
     try {
+      if (!ask) throw new Error("no asker")
       answer = await ask(question)
     } catch (error) {
       console.error("drain-telegram: ask failed", error)
-      await sendAnswer(bot, chat, "Could not answer that.")
-      return
+      answer = "Could not answer that."
     }
+  }
+  try {
     await sendAnswer(bot, chat, answer)
   } catch (error) {
     // Telegram itself would not take the reply. The answer is lost; the Owner asks again.
