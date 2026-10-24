@@ -370,6 +370,21 @@ test("a photo that cannot be read stays in the chat", async (t) => {
   assert.deepEqual(notices, ["Photo not saved"])
 })
 
+test("an image the app cannot decode becomes a placeholder at once instead of blocking the chat", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  api.files.set("png", Buffer.from("\x89PNG not a jpeg"))
+  const doc = { file_id: "png", file_size: 16, file_name: "scan.png", mime_type: "image/png" }
+  api.updates = [message(9, 17, Math.floor(Date.now() / 1000), { document: doc })]
+  const media = { transcribe: async () => "", readImage: async () => "" }
+
+  assert.equal(await drainTelegram(bot, folder, 111, undefined, undefined, media), 10)
+
+  const dump = fs.readFileSync(path.join(folder, "inbox", inbox(folder)[0]), "utf8")
+  assert.match(dump, /photo not downloaded or not readable, file_id png\n$/)
+  assert.ok(api.calls.some((call) => call.method === "deleteMessage"))
+})
+
 test("a file over 20 MB becomes a placeholder Dump and is not downloaded", async (t) => {
   const { folder, api, bot } = await setup()
   t.after(api.close)

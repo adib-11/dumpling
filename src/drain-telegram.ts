@@ -205,9 +205,12 @@ async function captureImage(
   const fileId = photo.file_id
   if (known.file.has(`${message.message_id}\n${fileId}`)) return { status: "duplicate" }
   const caption = message.caption ?? ""
+  let file: Buffer | undefined
+  let jpeg: Buffer | undefined
   try {
     if (!media) throw new Error("no OpenAI key")
-    const jpeg = downscaleJpeg(await bot.file(fileId))
+    file = await bot.file(fileId)
+    jpeg = downscaleJpeg(file)
     const text = (await media.readImage(jpeg)).trim()
     const section = text ? `## Image text\n\n${text}` : ""
     const body = caption && section ? `${caption}\n\n${section}` : caption || section
@@ -226,13 +229,17 @@ async function captureImage(
     known.body.add(`${message.message_id}\n${body}`)
     return { status: "saved" }
   } catch (error) {
-    if (giveUp(folder, message, known, fileId, caption, "photo not downloaded or not readable")) return { status: "saved" }
+    // A file that downloaded but would not decode fails the same way on every retry, so it is a placeholder at once.
+    const undecodable = file !== undefined && jpeg === undefined
+    if (giveUp(folder, message, known, fileId, caption, "photo not downloaded or not readable", undecodable)) {
+      return { status: "saved" }
+    }
     console.error(`drain-telegram: message ${message.message_id}: photo not saved`, error)
     return { status: "retry", notice: "Photo not saved" }
   }
 }
 
-// ponytail: jpeg-js decodes baseline JPEG only. A progressive photo stays in the chat, then becomes a placeholder after 12 h; switch to sharp if that shows up.
+// ponytail: jpeg-js decodes baseline JPEG only. A PNG or progressive JPEG becomes a placeholder; switch to sharp if that shows up.
 function downscaleJpeg(input: Buffer): Buffer {
   const decoded = decode(input, { useTArray: true, formatAsRGBA: true })
   const width = decoded.width > 1200 ? 1200 : decoded.width
@@ -261,8 +268,9 @@ function giveUp(
   fileId: string,
   caption: string,
   reason: string,
+  now = false,
 ): boolean {
-  if (Date.now() / 1000 - message.date <= giveUpSeconds) return false
+  if (!now && Date.now() / 1000 - message.date <= giveUpSeconds) return false
   remember(folder, message, known, fileId, "text", `${reason}, file_id ${fileId}${caption ? `\n\n${caption}` : ""}`)
   return true
 }
