@@ -4,6 +4,7 @@ import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 import { exec } from "dugite"
+import { decode, encode } from "jpeg-js"
 import { lockBrain } from "../src/brain-lock"
 import { createSecondBrain } from "../src/create-second-brain"
 import { drainTelegram, pollTelegram } from "../src/drain-telegram"
@@ -115,6 +116,316 @@ test("a message already in a Dump is not saved twice, in inbox/ or filed", async
   await drainTelegram(bot, folder, 111)
 
   assert.deepEqual(inbox(folder), ["2026-10-21-140000-telegram.md"])
+})
+
+test("a Bangla and English voice note becomes a text Dump and no audio is kept", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  const audio = Buffer.from("OggS-voice")
+  api.files.set("vo", audio)
+  api.updates = [
+    message(1, 11, at, { voice: { file_id: "vo", file_size: 900 }, caption: "remember this" }),
+  ]
+  let transcripts = 0
+  const media = {
+    async transcribe(bytes: Buffer) {
+      transcripts++
+      if (!bytes.equals(audio)) throw new Error("wrong audio")
+      return "আজকে milk কিনব"
+    },
+    async readImage() {
+      return ""
+    },
+  }
+
+  const offset = await drainTelegram(bot, folder, 111, undefined, undefined, media)
+  // A restart polls with no offset. The note is still unconfirmed, so it must not be transcribed again.
+  await drainTelegram(bot, folder, 111, undefined, undefined, media)
+  await drainTelegram(bot, folder, 111, offset, undefined, media)
+
+  assert.deepEqual(inbox(folder), ["2026-10-21-140000-telegram.md"])
+  assert.equal(
+    fs.readFileSync(path.join(folder, "inbox", "2026-10-21-140000-telegram.md"), "utf8"),
+    [
+      "---",
+      "captured: 2026-10-21T14:00:00+06:00",
+      "device: telegram",
+      "kind: voice",
+      "telegram_message_id: 11",
+      "telegram_file_id: vo",
+      "---",
+      "আজকে milk কিনব",
+      "",
+      "remember this",
+      "",
+    ].join("\n"),
+  )
+  assert.deepEqual(
+    fs.readdirSync(path.join(folder, "inbox")).filter((name) => !name.endsWith(".md") && name !== ".gitkeep"),
+    [],
+  )
+  assert.equal(transcripts, 1)
+  assert.ok(api.calls.some((call) => call.method === "deleteMessage" && call.params.message_id === 11))
+  assert.equal(api.confirmed, 2)
+})
+
+test("a failed transcription leaves the message in the chat and tells the tray", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  const now = Math.floor(Date.now() / 1000)
+  api.files.set("vo", Buffer.from("OggS-voice"))
+  api.updates = [
+    message(21, 31, now, { voice: { file_id: "vo", file_size: 900 } }),
+    message(22, 32, now + 60, { text: "after" }),
+  ]
+  const notices: (string | null)[] = []
+  const media = {
+    async transcribe() {
+      throw new Error("down")
+    },
+    async readImage() {
+      return ""
+    },
+  }
+
+  const next = await drainTelegram(bot, folder, 111, undefined, undefined, media, (notice) => notices.push(notice))
+
+  assert.equal(next, 21)
+  assert.deepEqual(inbox(folder), [])
+  assert.equal(api.calls.some((call) => call.method === "deleteMessage"), false)
+  assert.deepEqual(notices, ["Voice note not transcribed"])
+  await drainTelegram(bot, folder, 111, next, undefined, media)
+  assert.equal(api.confirmed, 21)
+  assert.deepEqual(inbox(folder), [])
+})
+
+test("a voice note still failing after 12 hours is kept as a placeholder so its file id is not lost", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  const old = Math.floor(Date.now() / 1000) - 50_000
+  api.files.set("vo", Buffer.from("OggS-voice"))
+  api.updates = [
+    message(23, 33, old, { voice: { file_id: "vo", file_size: 900 }, caption: "from the car" }),
+    message(24, 34, old + 60, { text: "after old" }),
+  ]
+  const notices: (string | null)[] = []
+
+  const next = await drainTelegram(
+    bot,
+    folder,
+    111,
+    undefined,
+    undefined,
+    {
+      async transcribe() {
+        throw new Error("down")
+      },
+      async readImage() {
+        return ""
+      },
+    },
+    (notice) => notices.push(notice),
+  )
+
+  assert.equal(next, 25)
+  const dumps = inbox(folder).map((name) => fs.readFileSync(path.join(folder, "inbox", name), "utf8"))
+  assert.ok(dumps.some((dump) => dump.includes("voice note not transcribed, file_id vo\n\nfrom the car\n")))
+  assert.ok(dumps.some((dump) => dump.includes("after old\n")))
+  assert.deepEqual(notices, [null])
+  assert.ok(api.calls.some((call) => call.method === "deleteMessage" && call.params.message_id === 33))
+})
+
+test("a failed transcription waits for the next poll instead of calling the model again immediately", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  const stop = new AbortController()
+  t.after(() => stop.abort())
+  const now = Math.floor(Date.now() / 1000)
+  api.files.set("vo", Buffer.from("OggS-voice"))
+  api.updates = [message(21, 31, now, { voice: { file_id: "vo", file_size: 900 } })]
+  let transcripts = 0
+  void pollTelegram(bot, folder, 111, stop.signal, undefined, 500, undefined, {
+    media: {
+      async transcribe() {
+        transcripts++
+        throw new Error("down")
+      },
+      async readImage() {
+        return ""
+      },
+    },
+  })
+
+  await until(() => transcripts >= 1)
+  await new Promise((resolve) => setTimeout(resolve, 100))
+  assert.equal(transcripts, 1)
+  assert.deepEqual(inbox(folder), [])
+  assert.equal(api.calls.some((call) => call.method === "deleteMessage"), false)
+})
+
+test("a photo of a page becomes a Dump with a 1200 px JPEG and the text read from it, in both scripts", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  api.files.set("ph", wideJpeg(1600, 800))
+  api.updates = [
+    message(6, 14, at, {
+      caption: "my receipt",
+      photo: [
+        { file_id: "small", width: 90, file_size: 10 },
+        { file_id: "ph", width: 1600, file_size: 5000 },
+      ],
+    }),
+  ]
+
+  await drainTelegram(bot, folder, 111, undefined, undefined, {
+    async transcribe() {
+      throw new Error("not a voice note")
+    },
+    async readImage(jpeg: Buffer) {
+      if (decode(jpeg).width !== 1200) throw new Error("the model was sent the full-size photo")
+      return "রসিদ\nReceipt total 42"
+    },
+  })
+
+  assert.equal(
+    fs.readFileSync(path.join(folder, "inbox", "2026-10-21-140000-telegram.md"), "utf8"),
+    [
+      "---",
+      "captured: 2026-10-21T14:00:00+06:00",
+      "device: telegram",
+      "kind: image",
+      "image: 2026-10-21-140000-telegram.jpg",
+      "telegram_message_id: 14",
+      "telegram_file_id: ph",
+      "---",
+      "my receipt",
+      "",
+      "## Image text",
+      "",
+      "রসিদ",
+      "Receipt total 42",
+      "",
+    ].join("\n"),
+  )
+  const jpeg = decode(fs.readFileSync(path.join(folder, "inbox", "2026-10-21-140000-telegram.jpg")))
+  assert.equal(jpeg.width, 1200)
+  assert.equal(jpeg.height, 600)
+  const files = await exec(["ls-files"], folder)
+  assert.ok(files.stdout.includes("inbox/2026-10-21-140000-telegram.jpg"))
+  assert.equal(
+    api.calls.some((call) => call.method === "getFile" && call.params.file_id === "small"),
+    false,
+  )
+})
+
+test("a photo still unreadable after 12 hours is kept as a placeholder so its file id is not lost", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  const old = Math.floor(Date.now() / 1000) - 50_000
+  api.files.set("ph", wideJpeg(80, 40))
+  api.updates = [message(25, 35, old, { caption: "the page", photo: [{ file_id: "ph", width: 80, file_size: 40 }] })]
+
+  await drainTelegram(bot, folder, 111, undefined, undefined, {
+    async transcribe() {
+      return ""
+    },
+    async readImage() {
+      throw new Error("down")
+    },
+  })
+
+  const dump = fs.readFileSync(path.join(folder, "inbox", inbox(folder)[0]), "utf8")
+  assert.match(dump, /photo not downloaded or not readable, file_id ph\n\nthe page\n$/)
+  assert.equal(fs.readdirSync(path.join(folder, "inbox")).some((name) => name.endsWith(".jpg")), false)
+})
+
+test("a photo that cannot be read stays in the chat", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  const now = Math.floor(Date.now() / 1000)
+  api.files.set("ph", wideJpeg(1600, 800))
+  api.updates = [message(8, 16, now, { photo: [{ file_id: "ph", width: 1600, file_size: 5000 }] })]
+  const notices: (string | null)[] = []
+
+  const next = await drainTelegram(
+    bot,
+    folder,
+    111,
+    undefined,
+    undefined,
+    {
+      async transcribe() {
+        return ""
+      },
+      async readImage() {
+        throw new Error("down")
+      },
+    },
+    (notice) => notices.push(notice),
+  )
+
+  assert.equal(next, 8)
+  assert.deepEqual(inbox(folder), [])
+  assert.equal(api.calls.some((call) => call.method === "deleteMessage"), false)
+  assert.deepEqual(notices, ["Photo not saved"])
+})
+
+test("an image the app cannot decode becomes a placeholder at once instead of blocking the chat", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  api.files.set("png", Buffer.from("\x89PNG not a jpeg"))
+  const doc = { file_id: "png", file_size: 16, file_name: "scan.png", mime_type: "image/png" }
+  api.updates = [message(9, 17, Math.floor(Date.now() / 1000), { document: doc })]
+  const media = { transcribe: async () => "", readImage: async () => "" }
+
+  assert.equal(await drainTelegram(bot, folder, 111, undefined, undefined, media), 10)
+
+  const dump = fs.readFileSync(path.join(folder, "inbox", inbox(folder)[0]), "utf8")
+  assert.match(dump, /photo not downloaded or not readable, file_id png\n$/)
+  assert.ok(api.calls.some((call) => call.method === "deleteMessage"))
+})
+
+test("a file over 20 MB becomes a placeholder Dump and is not downloaded", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  api.updates = [
+    message(7, 15, at, { document: { file_id: "huge", file_name: "film.mp4", file_size: 30_000_000 } }),
+  ]
+
+  const next = await drainTelegram(bot, folder, 111)
+
+  assert.equal(next, 8)
+  assert.match(
+    fs.readFileSync(path.join(folder, "inbox", "2026-10-21-140000-telegram.md"), "utf8"),
+    /^kind: text\ntelegram_message_id: 15\ntelegram_file_id: huge\n---\nfile too large for bot: film\.mp4, 28 MB\n$/m,
+  )
+  assert.equal(
+    api.calls.some((call) => call.method === "getFile" || call.method === "file"),
+    false,
+  )
+  assert.ok(api.calls.some((call) => call.method === "deleteMessage" && call.params.message_id === 15))
+})
+
+function wideJpeg(width: number, height: number): Buffer {
+  const data = Buffer.alloc(width * height * 4, 255)
+  return Buffer.from(encode({ data, width, height }, 80).data)
+}
+
+test("a smaller file is named in a Dump and not downloaded", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  api.updates = [message(9, 17, at, { document: { file_id: "pdf", file_name: "notes.pdf", file_size: 1000 } })]
+
+  await drainTelegram(bot, folder, 111)
+
+  assert.match(
+    fs.readFileSync(path.join(folder, "inbox", "2026-10-21-140000-telegram.md"), "utf8"),
+    /file sent to bot, not saved: notes\.pdf\n$/,
+  )
+  assert.equal(
+    api.calls.some((call) => call.method === "getFile" || call.method === "file"),
+    false,
+  )
 })
 
 test("a text with a link is a link Dump", async (t) => {

@@ -8,10 +8,12 @@ export function trayMenuItems(
   brainFolder: string | null,
   telegramConnected: boolean,
   backupFailed = false,
+  unsaved: string | null = null,
 ): TrayMenuItem[] {
   if (brainFolder) {
     return [
       { label: brainFolder, enabled: false },
+      ...(unsaved ? [{ label: unsaved, enabled: false }] : []),
       ...(backupFailed ? [{ label: "Backup push failed", enabled: false }] : []),
       { label: "Ingest now", action: "ingest", enabled: true },
       { label: "Undo last Ingest", action: "undo", enabled: true },

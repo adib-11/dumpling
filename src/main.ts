@@ -20,6 +20,7 @@ import { createSecondBrain, defaultSecondBrainFolder } from "./create-second-bra
 import { pollTelegram, type Asker } from "./drain-telegram"
 import { ytDlpAt } from "./fetch-link"
 import { backupRemote, hideCredentials, setBackupRemote } from "./git-remote"
+import { openAiMedia } from "./openai-media"
 import { ingestNow, lastIngestStatus, spawnOpencode, undoLastIngest, type IngestResult } from "./ingest-now"
 import { enableLinuxAutostart } from "./login-item"
 import { claimDailyIngest, readDrain, rememberDrain } from "./schedule"
@@ -33,6 +34,7 @@ let wizard: BrowserWindow | null = null
 let askBox: BrowserWindow | null = null
 let connecting: AbortController | null = null
 let polling = false
+let unsaved: string | null = null
 let lastDrained: Date | null = null
 let awakeSince = Date.now()
 let health: TrayHealth = "ok"
@@ -115,14 +117,31 @@ function startPolling(): void {
   if (polling || !folder || chat === null || !token) return
   polling = true
   lastDrained = readDrain(drainStamp(folder)) ?? new Date()
+  const key = storedKey()
   // The daily Ingest starts right after a drain, so it files what Telegram held overnight.
-  void pollTelegram(telegramBot(token), folder, chat, new AbortController().signal, asker(), undefined, () => {
-    const now = new Date()
-    lastDrained = now
-    rememberDrain(drainStamp(folder), now)
-    dailyIngest()
-    refreshHealth()
-  })
+  void pollTelegram(
+    telegramBot(token),
+    folder,
+    chat,
+    new AbortController().signal,
+    asker(),
+    undefined,
+    () => {
+      const now = new Date()
+      lastDrained = now
+      rememberDrain(drainStamp(folder), now)
+      dailyIngest()
+      refreshHealth()
+    },
+    {
+      media: key ? openAiMedia(key) : undefined,
+      onUnsaved(notice) {
+        if (notice === unsaved) return
+        unsaved = notice
+        rebuildMenu()
+      },
+    },
+  )
 }
 
 function drainStamp(folder: string): string {
@@ -155,13 +174,7 @@ function refreshHealth(): void {
   if (next === health || !tray) return
   health = next
   tray.setImage(trayImage(health))
-  tray.setToolTip(
-    health === "failing"
-      ? "Second Brain: the last Ingest failed"
-      : health === "not-drained"
-        ? "Second Brain: Telegram not drained for 20 h"
-        : "Second Brain",
-  )
+  tray.setToolTip(trayTip())
   if (health === "not-drained") notify("Telegram has not drained for 20 h. Messages older than 24 h are lost.")
 }
 
@@ -307,8 +320,17 @@ function rebuildMenu(): void {
   if (!tray) return
   const folder = readBrainFolder(configPath())
   tray.setContextMenu(
-    Menu.buildFromTemplate(trayMenuItems(folder, telegramConnected(), backupFailed).map(toMenuItem)),
+    Menu.buildFromTemplate(trayMenuItems(folder, telegramConnected(), backupFailed, unsaved).map(toMenuItem)),
   )
+  tray.setToolTip(trayTip())
+}
+
+// A voice note or photo waiting in the chat is named first; it is the thing the Owner can act on now.
+function trayTip(): string {
+  if (unsaved) return unsaved
+  if (health === "failing") return "Second Brain: the last Ingest failed"
+  if (health === "not-drained") return "Second Brain: Telegram not drained for 20 h"
+  return "Second Brain"
 }
 
 function createTray(): void {

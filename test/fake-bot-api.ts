@@ -7,6 +7,7 @@ export type FakeBotApi = {
   token: string
   updates: unknown[]
   confirmed: number
+  files: Map<string, Buffer>
   calls: { method: string; params: Record<string, unknown> }[]
   failSend: boolean
   nextMessageId: number
@@ -19,6 +20,7 @@ export async function fakeBotApi(token = "123:secret-token"): Promise<FakeBotApi
     token,
     updates: [],
     confirmed: 0,
+    files: new Map(),
     calls: [],
     failSend: false,
     nextMessageId: 9001,
@@ -34,14 +36,29 @@ export async function fakeBotApi(token = "123:secret-token"): Promise<FakeBotApi
     let body = ""
     req.on("data", (chunk) => (body += chunk))
     req.on("end", () => {
-      const [, bot, method] = req.url?.split("/") ?? []
-      const params = body ? JSON.parse(body) : {}
-      fake.calls.push({ method, params })
       const reply = (status: number, payload: unknown) => {
         res.writeHead(status, { "content-type": "application/json" })
         res.end(JSON.stringify(payload))
       }
+      const file = /^\/file\/bot([^/]+)\/f\/(.+)$/.exec(req.url ?? "")
+      if (file) {
+        fake.calls.push({ method: "file", params: { file_id: file[2] } })
+        if (file[1] !== fake.token) return reply(401, { ok: false, description: "Unauthorized" })
+        const bytes = fake.files.get(file[2])
+        if (!bytes) return reply(404, { ok: false, description: "file not found" })
+        res.writeHead(200, { "content-type": "application/octet-stream" })
+        res.end(bytes)
+        return
+      }
+      const [, bot, method] = req.url?.split("/") ?? []
+      const params = body ? JSON.parse(body) : {}
+      fake.calls.push({ method, params })
       if (bot !== `bot${fake.token}`) return reply(401, { ok: false, description: "Unauthorized" })
+      if (method === "getFile") {
+        const id = String(params.file_id ?? "")
+        if (!fake.files.has(id)) return reply(400, { ok: false, description: "file not found" })
+        return reply(200, { ok: true, result: { file_path: `f/${id}` } })
+      }
       if (method === "getUpdates") {
         if (typeof params.offset === "number") fake.confirmed = params.offset
         const result = fake.updates.filter((u) => (u as { update_id: number }).update_id >= fake.confirmed)
