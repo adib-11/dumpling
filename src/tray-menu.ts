@@ -1,6 +1,6 @@
 export type TrayMenuItem = {
   label: string
-  action?: "setup" | "ingest" | "undo" | "remote" | "quit"
+  action?: "setup" | "ingest" | "undo" | "ask" | "remote" | "quit"
   enabled: boolean
 }
 
@@ -15,6 +15,7 @@ export function trayMenuItems(
       ...(backupFailed ? [{ label: "Backup push failed", enabled: false }] : []),
       { label: "Ingest now", action: "ingest", enabled: true },
       { label: "Undo last Ingest", action: "undo", enabled: true },
+      { label: "Ask…", action: "ask", enabled: true },
       ...(telegramConnected
         ? []
         : [{ label: "Connect Telegram…", action: "setup" as const, enabled: true }]),
