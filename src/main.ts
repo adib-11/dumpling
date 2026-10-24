@@ -18,6 +18,7 @@ import { askQuestion, type AskResult } from "./ask"
 import { readBrainFolder, readTelegramChat, writeBrainFolder, writeTelegramChat } from "./brain-config"
 import { createSecondBrain, defaultSecondBrainFolder } from "./create-second-brain"
 import { pollTelegram, type Asker } from "./drain-telegram"
+import { ytDlpAt } from "./fetch-link"
 import { backupRemote, hideCredentials, setBackupRemote } from "./git-remote"
 import { ingestNow, lastIngestStatus, spawnOpencode, undoLastIngest, type IngestResult } from "./ingest-now"
 import { enableLinuxAutostart } from "./login-item"
@@ -82,10 +83,14 @@ function loadToken(): string | null {
   }
 }
 
-function opencodeBin(): string {
-  const name = process.platform === "win32" ? "opencode.exe" : "opencode"
+function vendorBin(name: string): string {
+  const exe = process.platform === "win32" ? `${name}.exe` : name
   const root = app.isPackaged ? process.resourcesPath : path.join(__dirname, "..", "vendor")
-  return path.join(root, "opencode", name)
+  return path.join(root, name, exe)
+}
+
+function opencodeBin(): string {
+  return vendorBin("opencode")
 }
 
 function redact(text: string, secret: string): string {
@@ -337,6 +342,7 @@ async function runIngest(fromTray: boolean): Promise<void> {
       brain: folder,
       apiKey,
       runner: (run) => spawnOpencode(bin, run),
+      links: { fetch, ytDlp: ytDlpAt(vendorBin("yt-dlp"), vendorBin("deno")) },
       notify: (text) => notify(redact(text, apiKey)),
       ...ingestBot(loadToken(), readTelegramChat(configPath())),
     })
