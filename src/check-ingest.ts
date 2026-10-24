@@ -103,7 +103,7 @@ function findDump(brain: string, name: string): string | undefined {
   return candidates.find((rel) => fs.existsSync(path.join(brain, rel)))
 }
 
-function read(file: string): string {
+export function read(file: string): string {
   try {
     return fs.readFileSync(file, "utf8")
   } catch (error) {

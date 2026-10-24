@@ -15,7 +15,7 @@ Rule ideas (triage dispositions, never rewriting history, cascade lookup, the gr
 - `bin/ingest` started you and is waiting for you to finish. Never run it or any other script, never run git, and never start a subagent: file the Dumps yourself with your file tools.
 - Never move, rename or delete a file. `bin/ingest` moves each Dump to `vault/raw/` and commits.
 - Never write in `inbox/` or `vault/raw/`. Never read `vault/private/`.
-- Never edit `AGENTS.md` or a skill. Rule changes are proposed in the daily message only.
+- Never edit `AGENTS.md` or a skill. Rule changes are proposed in the daily message only, through `log.md` (see **`log.md`**).
 - Do not ask questions in this session. Nobody is watching the run. A Telegram Follow-up is one line appended to `vault/follow-ups.md`, which `bin/ingest` sends later. When unsure, follow the rule for "unsure" below and flag it in `log.md`.
 
 ## Steps
@@ -216,7 +216,7 @@ Append one entry per Dump, in filing order. If the file is empty, start it with 
 
 - The heading date is today's date; the title is the main Page the Dump went to.
 - `Disposition`: any of `New`, `Update`, `Disputed`, `Addendum`. `Raw` is always the Dump's name as a wikilink.
-- Omit `Created`, `Updated` or `Flags` when empty. For an Addendum, add `- Addendum to: [[<original>]]`, plus `(matched "re ...")` when matched by text.
+- Omit `Created`, `Updated` or `Flags` when empty. To propose a rule change, add `- Rule change: <the change, in one sentence>`; the daily message sends it. For an Addendum, add `- Addendum to: [[<original>]]`, plus `(matched "re ...")` when matched by text.
 - Flags, exactly these words: `new tag <tag>`, `possible duplicate of [[<page>]]`, `unsure Take on [[<page>]]`, `disputed fact on [[<page>]]`, `unmatched "re ..."`, `unfetched link`.
 - A No material Dump gets this entry, nothing else:
 
