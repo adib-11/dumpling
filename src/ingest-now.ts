@@ -6,6 +6,7 @@ import { lockBrain } from "./brain-lock"
 import { checkIngest } from "./check-ingest"
 import { commitNewDumps } from "./drain-telegram"
 import { pushBackup, type PushResult } from "./git-remote"
+import { type Bot } from "./telegram"
 import { writeIndex } from "./write-index"
 
 const gitName = "Second Brain"
@@ -29,6 +30,7 @@ export type IngestResult = {
   cost: number
   reason?: string
   push?: PushResult
+  followUp?: { sent: number; partial: boolean }
 }
 
 type SpawnLike = (
@@ -70,6 +72,8 @@ export async function ingestNow(options: {
   now?: Date
   timeoutMs?: number
   notify?: (text: string) => void
+  bot?: Bot
+  chat?: number
 }): Promise<IngestResult> {
   const unlock = lockBrain(options.brain)
   if (!unlock) return { status: "already-running", dumps: 0, cost: 0 }
@@ -84,6 +88,7 @@ export async function ingestNow(options: {
   let check = "ok"
   let reason: string | undefined
   let stash: string | undefined
+  let followUp: IngestResult["followUp"]
 
   // Runs the agent once. Returns why it failed, if it did.
   const ask = async (prompt: string): Promise<string | undefined> => {
@@ -197,10 +202,19 @@ export async function ingestNow(options: {
       notify(`Ingest failed: ${reason}.${stash ? ` Stash: ${stash}.` : ""}`)
     }
 
+    if (options.bot && options.chat !== undefined) {
+      try {
+        followUp = await sendFollowUps(options.brain, options.bot, options.chat)
+      } catch (error) {
+        // The Dumps are filed. The run is still recorded and pushed, and the next Ingest sends what is left.
+        followUp = { sent: 0, partial: true }
+        notify(`Follow-ups failed: ${error instanceof Error ? error.message : error}`)
+      }
+    }
     record(options.brain, now, [status, dumpsFiled, cost.toFixed(4), check, stash ?? "", reason ?? ""])
     // Last and best-effort: a failed push rolls nothing back, and the next Ingest pushes again.
     const pushed = await pushBackup(options.brain)
-    return { status, dumps: dumpsFiled, cost, reason, ...(pushed && { push: pushed }) }
+    return { status, dumps: dumpsFiled, cost, reason, ...(pushed && { push: pushed }), ...(followUp && { followUp }) }
   } finally {
     unlock()
   }
@@ -342,11 +356,109 @@ async function commitOwnerEdits(brain: string): Promise<void> {
   if (committed.exitCode !== 0) throw new Error(committed.stderr || committed.stdout || "git commit failed")
 }
 
+// "<dump name>\t<question>" in vault/follow-ups.md. Not a Telegram Dump, an Addendum, or a Dump
+// already asked: drop the line. A failed send stays for the next Ingest.
+async function sendFollowUps(
+  brain: string,
+  bot: Bot,
+  chat: number,
+): Promise<IngestResult["followUp"]> {
+  const file = path.join(brain, "vault", "follow-ups.md")
+  if (!fs.existsSync(file)) return undefined
+  const asked = askedNames(brain)
+  const keep: string[] = []
+  let sent = 0
+  let changed = false
+  let partial = false
+  for (const line of fs.readFileSync(file, "utf8").split("\n")) {
+    if (line === "" || line.startsWith("#")) continue
+    const tab = line.indexOf("\t")
+    const name = tab === -1 ? "" : line.slice(0, tab)
+    const question = tab === -1 ? "" : line.slice(tab + 1)
+    if (name === "" || question === "") {
+      keep.push(line)
+      continue
+    }
+    const dump = dumpFile(brain, name)
+    if (!dump) {
+      keep.push(line)
+      continue
+    }
+    const fields = frontmatterFields(fs.readFileSync(dump, "utf8"))
+    if (asked.has(name) || fields.device !== "telegram" || fields.addendum_to) {
+      changed = true
+      continue
+    }
+    const messageId = Number(fields.telegram_message_id)
+    if (!fields.telegram_message_id || !Number.isInteger(messageId)) {
+      keep.push(line)
+      continue
+    }
+    try {
+      const result = (await bot("sendMessage", {
+        chat_id: chat,
+        text: question,
+        reply_parameters: { message_id: messageId, allow_sending_without_reply: true },
+        reply_markup: { force_reply: true },
+      })) as { message_id?: number }
+      if (typeof result?.message_id !== "number") {
+        keep.push(line)
+        partial = true
+        continue
+      }
+      fs.appendFileSync(path.join(brain, "vault", "telegram-questions.md"), `${result.message_id} ${name}\n`)
+      asked.add(name)
+      sent += 1
+      changed = true
+    } catch {
+      keep.push(line)
+      partial = true
+    }
+  }
+  if (!changed) return { sent, partial }
+  fs.writeFileSync(file, ["# Follow-ups", ...keep, ""].join("\n"))
+  const paths = ["vault/follow-ups.md"]
+  if (fs.existsSync(path.join(brain, "vault", "telegram-questions.md"))) paths.push("vault/telegram-questions.md")
+  await commit(brain, `follow-up: ${sent}`, ...paths)
+  return { sent, partial }
+}
+
+function askedNames(brain: string): Set<string> {
+  const file = path.join(brain, "vault", "telegram-questions.md")
+  const asked = new Set<string>()
+  if (!fs.existsSync(file)) return asked
+  for (const line of fs.readFileSync(file, "utf8").split("\n")) {
+    const name = line.trim().split(/\s+/)[1]
+    if (name) asked.add(name)
+  }
+  return asked
+}
+
+function dumpFile(brain: string, name: string): string | undefined {
+  const candidates = [
+    path.join(brain, "inbox", `${name}.md`),
+    path.join(brain, "vault", "raw", name.slice(0, 4), name.slice(5, 7), `${name}.md`),
+  ]
+  return candidates.find((candidate) => fs.existsSync(candidate))
+}
+
+function frontmatterFields(text: string): Record<string, string> {
+  const fields: Record<string, string> = {}
+  const lines = text.split("\n")
+  if (lines[0] !== "---") return fields
+  for (let i = 1; i < lines.length && lines[i] !== "---"; i++) {
+    const sep = lines[i].indexOf(":")
+    if (sep === -1) continue
+    fields[lines[i].slice(0, sep)] = lines[i].slice(sep + 1).trim()
+  }
+  return fields
+}
+
 // Commits what moved out of inbox/ and everything under dest. A Dump that arrived during the run is not
 // in git yet, so it stays out of this commit, and an Undo of it never deletes that Dump.
-async function commit(brain: string, message: string, dest: string): Promise<void> {
+async function commit(brain: string, message: string, ...dest: string[]): Promise<void> {
   const env = gitEnv()
-  for (const args of [["add", "-A", "--", dest], ["add", "-u", "--", "inbox"]]) {
+  for (const args of [["add", "-A", "--", ...dest], ["add", "-u", "--", "inbox"]]) {
     const added = await exec(args, brain, { env })
     if (added.exitCode !== 0) throw new Error(added.stderr || "git add failed")
   }
