@@ -3,6 +3,9 @@ import type { AgentRunner } from "./ingest-now"
 // Runs the ask skill on one Recall or Persona question (spec §8). The answer is relayed verbatim:
 // the skill cites Page names and ends it with "Filed up to <date>".
 
+// A hung opencode would hold up the Telegram drain, so a question gets a bounded run.
+const askTimeoutMs = 2 * 60 * 1000
+
 export type AskResult = { status: "ok"; answer: string } | { status: "failed"; reason: string }
 
 export async function askQuestion(options: {
@@ -27,6 +30,7 @@ export async function askQuestion(options: {
     ],
     env: { ...process.env, OPENAI_API_KEY: options.apiKey },
     cwd: options.brain,
+    signal: AbortSignal.timeout(askTimeoutMs),
   })
   if (run.code !== 0) return { status: "failed", reason: `runner exited ${run.code}` }
   const answer = answerFromStdout(run.stdout)

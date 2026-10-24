@@ -1,4 +1,16 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, shell, Tray } from "electron"
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeImage,
+  Notification,
+  powerMonitor,
+  safeStorage,
+  shell,
+  Tray,
+} from "electron"
 import fs from "node:fs"
 import path from "node:path"
 import { acceptApiKey, loadApiKey } from "./api-key"
@@ -7,10 +19,11 @@ import { readBrainFolder, readTelegramChat, writeBrainFolder, writeTelegramChat 
 import { createSecondBrain, defaultSecondBrainFolder } from "./create-second-brain"
 import { pollTelegram, type Asker } from "./drain-telegram"
 import { backupRemote, hideCredentials, setBackupRemote } from "./git-remote"
-import { ingestNow, spawnOpencode, type IngestResult } from "./ingest-now"
+import { ingestNow, lastIngestStatus, spawnOpencode, undoLastIngest, type IngestResult } from "./ingest-now"
 import { enableLinuxAutostart } from "./login-item"
+import { claimDailyIngest, readDrain, rememberDrain } from "./schedule"
 import { connectBot, telegramBot } from "./telegram"
-import { trayMenuItems, type TrayMenuItem } from "./tray-menu"
+import { trayHealth, trayMenuItems, type TrayHealth, type TrayMenuItem } from "./tray-menu"
 
 const openaiKeysUrl = "https://platform.openai.com/api-keys"
 
@@ -19,6 +32,9 @@ let wizard: BrowserWindow | null = null
 let askBox: BrowserWindow | null = null
 let connecting: AbortController | null = null
 let polling = false
+let lastDrained: Date | null = null
+let awakeSince = Date.now()
+let health: TrayHealth = "ok"
 let wizardStep: "remote" | null = null
 let backupFailed = false
 
@@ -93,7 +109,55 @@ function startPolling(): void {
   const token = loadToken()
   if (polling || !folder || chat === null || !token) return
   polling = true
-  void pollTelegram(telegramBot(token), folder, chat, new AbortController().signal, asker())
+  lastDrained = readDrain(drainStamp(folder)) ?? new Date()
+  // The daily Ingest starts right after a drain, so it files what Telegram held overnight.
+  void pollTelegram(telegramBot(token), folder, chat, new AbortController().signal, asker(), undefined, () => {
+    const now = new Date()
+    lastDrained = now
+    rememberDrain(drainStamp(folder), now)
+    dailyIngest()
+    refreshHealth()
+  })
+}
+
+function drainStamp(folder: string): string {
+  return path.join(folder, ".state", "drained")
+}
+
+function dailyIngest(): void {
+  const folder = readBrainFolder(configPath())
+  if (!folder || storedKey() === null) return
+  if (claimDailyIngest(path.join(folder, ".state", "daily-ingest"), new Date())) void runIngest(false)
+}
+
+function notify(body: string): void {
+  if (Notification.isSupported()) new Notification({ title: "Second Brain", body }).show()
+}
+
+function trayImage(state: TrayHealth): Electron.NativeImage {
+  const name = state === "ok" ? "icon.png" : `icon-${state}.png`
+  const icon = resourcePath("assets", name)
+  const image = nativeImage.createFromPath(icon).resize({ width: 22, height: 22 })
+  if (image.isEmpty()) throw new Error(`Tray icon is missing or unreadable: ${icon}`)
+  // A template image is drawn in one colour, which would hide the warning dot.
+  if (process.platform === "darwin" && state === "ok") image.setTemplateImage(true)
+  return image
+}
+
+function refreshHealth(): void {
+  const folder = readBrainFolder(configPath())
+  const next = trayHealth(folder ? lastIngestStatus(folder) : null, polling ? lastDrained : null, new Date())
+  if (next === health || !tray) return
+  health = next
+  tray.setImage(trayImage(health))
+  tray.setToolTip(
+    health === "failing"
+      ? "Second Brain: the last Ingest failed"
+      : health === "not-drained"
+        ? "Second Brain: Telegram not drained for 20 h"
+        : "Second Brain",
+  )
+  if (health === "not-drained") notify("Telegram has not drained for 20 h. Messages older than 24 h are lost.")
 }
 
 // Answers one /ask question from Telegram by running the ask skill (spec §4).
@@ -218,15 +282,19 @@ function toMenuItem(item: TrayMenuItem): Electron.MenuItemConstructorOptions {
         ? () => app.quit()
         : item.action === "setup"
           ? () => openWizard()
-          : item.action === "remote"
-            ? () => openWizard("remote")
-            : item.action === "ask"
-              ? () => openAsk()
-              : item.action === "ingest"
-                ? () => {
-                    void ingestFromTray()
-                  }
-                : undefined,
+          : item.action === "ingest"
+            ? () => {
+                void runIngest(true)
+              }
+            : item.action === "undo"
+              ? () => {
+                  void undoFromTray()
+                }
+              : item.action === "remote"
+                ? () => openWizard("remote")
+                : item.action === "ask"
+                  ? () => openAsk()
+                  : undefined,
   }
 }
 
@@ -236,35 +304,32 @@ function rebuildMenu(): void {
   tray.setContextMenu(
     Menu.buildFromTemplate(trayMenuItems(folder, telegramConnected(), backupFailed).map(toMenuItem)),
   )
-  tray.setToolTip("Second Brain")
 }
 
 function createTray(): void {
-  const icon = resourcePath("assets", "icon.png")
-  const image = nativeImage.createFromPath(icon).resize({ width: 22, height: 22 })
-  if (image.isEmpty()) throw new Error(`Tray icon is missing or unreadable: ${icon}`)
-  if (process.platform === "darwin") image.setTemplateImage(true)
-  tray = new Tray(image)
+  tray = new Tray(trayImage("ok"))
+  tray.setToolTip("Second Brain")
   if (process.platform !== "darwin") {
     tray.on("click", () => tray?.popUpContextMenu())
   }
   rebuildMenu()
+  refreshHealth()
 }
 
-async function ingestFromTray(): Promise<void> {
+async function runIngest(fromTray: boolean): Promise<void> {
   const folder = readBrainFolder(configPath())
   if (!folder) {
-    openWizard()
+    if (fromTray) openWizard()
     return
   }
   const apiKey = storedKey()
   if (!apiKey) {
-    openWizard()
+    if (fromTray) openWizard()
     return
   }
   const bin = opencodeBin()
   if (!fs.existsSync(bin)) {
-    dialog.showErrorBox("Second Brain", "The opencode binary is missing.")
+    notify("Ingest stopped: the opencode binary is missing.")
     return
   }
   try {
@@ -272,12 +337,34 @@ async function ingestFromTray(): Promise<void> {
       brain: folder,
       apiKey,
       runner: (run) => spawnOpencode(bin, run),
+      notify: (text) => notify(redact(text, apiKey)),
     })
     if (result.status === "failed") console.error(redact(result.reason ?? "Ingest failed.", apiKey))
     showPush(result)
   } catch (error) {
     const message = error instanceof Error ? error.message : "Ingest failed."
     console.error(redact(message, apiKey))
+    notify(redact(`Ingest failed: ${message}`, apiKey))
+  }
+  refreshHealth()
+}
+
+async function undoFromTray(): Promise<void> {
+  const folder = readBrainFolder(configPath())
+  if (!folder) return
+  try {
+    const result = await undoLastIngest(folder)
+    notify(
+      result.status === "ok"
+        ? "Undid the last Ingest. Its Dumps are back in inbox/."
+        : result.status === "nothing"
+          ? "There is no Ingest to undo."
+          : result.status === "already-running"
+            ? "Ingest is running. Undo again when it is done."
+            : `Undo failed, nothing changed: ${result.reason}`,
+    )
+  } catch (error) {
+    notify(`Undo failed: ${errorMessage(error, "unknown error")}`)
   }
 }
 
@@ -431,6 +518,18 @@ function start(): void {
     createTray()
     startPolling()
     if (setupStep()) openWizard()
+    powerMonitor.on("resume", () => {
+      awakeSince = Date.now()
+    })
+    // With a bot, each drain starts the daily Ingest (startPolling). Without one, or with Telegram out of
+    // reach for 5 minutes since the last start or wake, the clock does: the drain is best-effort.
+    const tick = () => {
+      const drainedOrAwake = Math.max(lastDrained?.getTime() ?? 0, awakeSince)
+      if (!polling || Date.now() - drainedOrAwake > 5 * 60 * 1000) dailyIngest()
+      refreshHealth()
+    }
+    tick()
+    setInterval(tick, 60 * 1000)
   })
 }
 

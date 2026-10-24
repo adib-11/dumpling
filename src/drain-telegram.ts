@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import { brainLocked } from "./brain-lock"
 import { git } from "./create-second-brain"
 import { longPollSeconds, type Bot, type Update } from "./telegram"
 
@@ -59,7 +60,9 @@ export async function drainTelegram(
     fs.writeFileSync(temp, dump)
     fs.renameSync(temp, path.join(folder, "inbox", `${stem}.md`))
   }
-  if (updates.length) await commitNewDumps(folder)
+  // During an Ingest or Undo the new Dumps wait in inbox/ uncommitted, so two git commands never race on the
+  // index. The next drain or Ingest commits them.
+  if (updates.length && !brainLocked(folder)) await commitNewDumps(folder)
   for (const id of toDelete) {
     try {
       await bot("deleteMessage", { chat_id: chat, message_id: id })
@@ -71,6 +74,7 @@ export async function drainTelegram(
 }
 
 // Long-polls the bot until stopped. A failed poll is retried; its batch stays unconfirmed, so nothing is lost.
+// onDrained runs after each successful poll.
 export async function pollTelegram(
   bot: Bot,
   folder: string,
@@ -78,11 +82,13 @@ export async function pollTelegram(
   stop: AbortSignal,
   ask?: Asker,
   retryMs = 5000,
+  onDrained: () => void = () => {},
 ): Promise<void> {
   let offset: number | undefined
   while (!stop.aborted) {
     try {
       offset = await drainTelegram(bot, folder, chat, offset, ask)
+      onDrained()
     } catch (error) {
       console.error("drain-telegram: poll failed", error)
       await new Promise((resolve) => setTimeout(resolve, retryMs))
@@ -143,7 +149,7 @@ function splitMessage(text: string): string[] {
 }
 
 // Commits every Dump not yet in git, including any a failed commit left behind, and nothing else.
-async function commitNewDumps(folder: string): Promise<void> {
+export async function commitNewDumps(folder: string): Promise<void> {
   const status = await git(["status", "--porcelain", "-z", "--untracked-files=all", "--", "inbox"], folder)
   const fresh = status
     .split("\0")
