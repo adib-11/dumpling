@@ -345,6 +345,7 @@ async function runIngest(fromTray: boolean): Promise<void> {
       links: { fetch, ytDlp: ytDlpAt(vendorBin("yt-dlp"), vendorBin("deno")) },
       notify: (text) => notify(redact(text, apiKey)),
       ...ingestBot(loadToken(), readTelegramChat(configPath())),
+      daily: !fromTray,
     })
     if (result.status === "failed") console.error(redact(result.reason ?? "Ingest failed.", apiKey))
     showPush(result)

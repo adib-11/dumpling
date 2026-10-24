@@ -6,6 +6,7 @@ import { lockBrain } from "./brain-lock"
 import { checkIngest } from "./check-ingest"
 import { commitNewDumps } from "./drain-telegram"
 import { fetchLinks, type LinkTools } from "./fetch-link"
+import { filedToday } from "./filed-today"
 import { pushBackup, type PushResult } from "./git-remote"
 import { type Bot } from "./telegram"
 import { writeIndex } from "./write-index"
@@ -76,6 +77,8 @@ export async function ingestNow(options: {
   notify?: (text: string) => void
   bot?: Bot
   chat?: number
+  // The scheduled Ingest also sends the "Filed today" message.
+  daily?: boolean
 }): Promise<IngestResult> {
   const unlock = lockBrain(options.brain)
   if (!unlock) return { status: "already-running", dumps: 0, cost: 0 }
@@ -85,12 +88,13 @@ export async function ingestNow(options: {
   const limit = options.timeoutMs ?? chunkTimeoutMs
   const notify = options.notify ?? (() => {})
   let status: IngestResult["status"] = "ok"
-  let dumpsFiled = 0
   let cost = 0
   let check = "ok"
   let reason: string | undefined
   let stash: string | undefined
   let followUp: IngestResult["followUp"]
+  let pending: string[] = []
+  const filed: string[] = []
 
   // Runs the agent once. Returns why it failed, if it did.
   const ask = async (prompt: string): Promise<string | undefined> => {
@@ -145,7 +149,7 @@ export async function ingestNow(options: {
 
   try {
     try {
-      let pending = listDumps(options.brain)
+      pending = listDumps(options.brain)
       if (pending.length > 0) {
         // check-ingest and the no-change check read the wiki's uncommitted lines as the agent's.
         await commitOwnerEdits(options.brain)
@@ -193,10 +197,10 @@ export async function ingestNow(options: {
           const stem = stemOf(dump)
           moveDump(options.brain, dump, path.join("vault", "raw", stem.slice(0, 4), stem.slice(5, 7)))
           fails.delete(stem)
+          filed.push(stem)
         }
         writeFails(options.brain, fails)
         await commit(options.brain, `ingest: ${today}, ${chunk.length} Dumps`, "vault")
-        dumpsFiled += chunk.length
         pending = pending.filter((dump) => !chunk.includes(dump))
       }
     } catch (error) {
@@ -218,11 +222,20 @@ export async function ingestNow(options: {
         followUp = { sent: 0, partial: true }
         notify(`Follow-ups failed: ${error instanceof Error ? error.message : error}`)
       }
+      // Dumps left in inbox/ by a failed run count as failed.
+      const text = options.daily ? filedToday(options.brain, filed, status === "failed" ? pending.length : 0) : undefined
+      if (text) {
+        try {
+          await options.bot("sendMessage", { chat_id: options.chat, text })
+        } catch (error) {
+          notify(`Filed today message failed: ${error instanceof Error ? error.message : error}`)
+        }
+      }
     }
-    record(options.brain, now, [status, dumpsFiled, cost.toFixed(4), check, stash ?? "", reason ?? ""])
+    record(options.brain, now, [status, filed.length, cost.toFixed(4), check, stash ?? "", reason ?? ""])
     // Last and best-effort: a failed push rolls nothing back, and the next Ingest pushes again.
     const pushed = await pushBackup(options.brain)
-    return { status, dumps: dumpsFiled, cost, reason, ...(pushed && { push: pushed }), ...(followUp && { followUp }) }
+    return { status, dumps: filed.length, cost, reason, ...(pushed && { push: pushed }), ...(followUp && { followUp }) }
   } finally {
     unlock()
   }

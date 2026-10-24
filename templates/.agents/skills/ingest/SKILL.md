@@ -15,7 +15,7 @@ Rule ideas (triage dispositions, never rewriting history, cascade lookup, the gr
 - `bin/ingest` started you and is waiting for you to finish. Never run it or any other script, never run git, and never start a subagent: file the Dumps yourself with your file tools.
 - Never move, rename or delete a file. `bin/ingest` moves each Dump to `vault/raw/` and commits.
 - Never write in `inbox/` or `vault/raw/`. Never read `vault/private/`.
-- Never edit `AGENTS.md` or a skill. Rule changes are proposed in the daily message only.
+- Never edit `AGENTS.md` or a skill. Rule changes are proposed in the daily message only: to propose one, add `- Rule change: <the change, in one sentence>` to the Dump's `log.md` entry.
 - Do not ask questions in this session. Nobody is watching the run. A Telegram Follow-up is one line appended to `vault/follow-ups.md`, which `bin/ingest` sends later. When unsure, follow the rule for "unsure" below and flag it in `log.md`.
 
 ## Steps
