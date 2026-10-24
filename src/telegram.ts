@@ -4,7 +4,13 @@ export type Bot = (method: string, params?: Record<string, unknown>, signal?: Ab
 
 export type Update = {
   update_id: number
-  message?: { message_id: number; date: number; chat: { id: number; type: string }; text?: string }
+  message?: {
+    message_id: number
+    date: number
+    chat: { id: number; type: string }
+    text?: string
+    reply_to_message?: { message_id: number; text?: string; caption?: string }
+  }
 }
 
 export const longPollSeconds = 25
@@ -25,6 +31,11 @@ export function telegramBot(token: string, base = "https://api.telegram.org"): B
     if (!reply.ok) throw new Error(`Telegram ${method} failed: ${reply.description ?? response.status}`)
     return reply.result
   }
+}
+
+// What ingestNow needs to send Follow-ups. The daily and the manual Ingest both pass it.
+export function ingestBot(token: string | null, chat: number | null, base?: string): { bot?: Bot; chat?: number } {
+  return token && chat !== null ? { bot: telegramBot(token, base), chat } : {}
 }
 
 // Waits for the Owner's /start in a private chat and returns that chat, the only one the app accepts.
