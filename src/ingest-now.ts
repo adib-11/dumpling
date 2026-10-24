@@ -95,6 +95,7 @@ export async function ingestNow(options: {
   let followUp: IngestResult["followUp"]
   let pending: string[] = []
   const filed: string[] = []
+  let failed = 0
 
   // Runs the agent once. Returns why it failed, if it did.
   const ask = async (prompt: string): Promise<string | undefined> => {
@@ -165,6 +166,7 @@ export async function ingestNow(options: {
       if (pending.length > 0 && options.apiKey.trim() === "") {
         // Never counted against the Dumps.
         status = "failed"
+        failed = pending.length
         reason = "OpenAI API key is missing"
         notify("Ingest stopped: the OpenAI API key is missing.")
       }
@@ -179,6 +181,7 @@ export async function ingestNow(options: {
           // The chunk's edits go to a stash, never a reset, and its Dumps stay in inbox/.
           stash = await stashChunk(options.brain, now)
           status = "failed"
+          failed = chunk.length
           reason = why
           notify(`Ingest failed: ${why}. ${chunk.length} Dumps stay in inbox/.${stash ? ` Stash: ${stash}.` : ""}`)
           for (const dump of chunk) fails.set(stemOf(dump), (fails.get(stemOf(dump)) ?? 0) + 1)
@@ -205,6 +208,8 @@ export async function ingestNow(options: {
       }
     } catch (error) {
       status = "failed"
+      // Thrown mid-chunk, so every Dump still waiting may be part of it.
+      failed = pending.length
       reason = error instanceof Error ? error.message : "ingest failed"
       try {
         stash = await stashChunk(options.brain, now)
@@ -222,8 +227,7 @@ export async function ingestNow(options: {
         followUp = { sent: 0, partial: true }
         notify(`Follow-ups failed: ${error instanceof Error ? error.message : error}`)
       }
-      // Dumps left in inbox/ by a failed run count as failed.
-      const text = options.daily ? filedToday(options.brain, filed, status === "failed" ? pending.length : 0) : undefined
+      const text = options.daily ? filedToday(options.brain, filed, failed) : undefined
       if (text) {
         try {
           await options.bot("sendMessage", { chat_id: options.chat, text })

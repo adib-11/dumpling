@@ -105,7 +105,7 @@ test("a day with an empty inbox/ sends nothing, and neither does a manual Ingest
   assert.equal(api.calls.some((call) => call.method === "sendMessage"), false)
 })
 
-test("Dumps a failed run left in inbox/ count as failed, and nothing filed is no message", () => {
+test("the failed Dumps are counted, and nothing filed is no message", () => {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), "filed-today-"))
   fs.mkdirSync(path.join(folder, "vault", "wiki"), { recursive: true })
   fs.writeFileSync(path.join(folder, "vault", "wiki", "log.md"), `# Log\n## [${today}] ingest | Dune\n- Raw: [[${dumps[0]}]]\n- Updated: [[dune|Dune]]\n`)

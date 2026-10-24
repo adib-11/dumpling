@@ -1,5 +1,5 @@
-import fs from "node:fs"
 import path from "node:path"
+import { read } from "./check-ingest"
 
 // The daily "Filed today" message, from the log.md entries of the Dumps this run filed. It stands in for
 // the weekly Digest. Nothing filed: no message.
@@ -30,7 +30,7 @@ export function filedToday(brain: string, filed: string[], failed: number): stri
     rules.push(...entry.rules)
   }
   for (const page of created) updated.delete(page)
-  const threads = read(path.join(wiki, "open-threads.md"))
+  const threadsAdded = read(path.join(wiki, "open-threads.md"))
     .split("\n")
     .filter((line) => line.startsWith("- [") && filed.some((name) => line.includes(`[[${name}|`))).length
   return [
@@ -38,7 +38,7 @@ export function filedToday(brain: string, filed: string[], failed: number): stri
     `Dumps: ${filed.length} filed, ${failed} failed.`,
     `Pages: ${created.size} created, ${updated.size} updated.`,
     `Unfetched links: ${unfetched}.`,
-    `Open threads added: ${threads}.`,
+    `Open threads added: ${threadsAdded}.`,
     ...(rules.length > 0 ? ["Rule changes Ingest proposes:", ...rules.map((rule) => `- ${rule}`)] : []),
   ].join("\n")
 }
@@ -46,8 +46,4 @@ export function filedToday(brain: string, filed: string[], failed: number): stri
 // Wikilinked Pages only: a bare `open-threads` is not a Page.
 function pagesIn(field = ""): string[] {
   return [...field.matchAll(/\[\[([^\]|]+)/g)].map((match) => match[1])
-}
-
-function read(file: string): string {
-  return fs.existsSync(file) ? fs.readFileSync(file, "utf8") : ""
 }
