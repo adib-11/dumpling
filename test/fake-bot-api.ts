@@ -22,7 +22,13 @@ export async function fakeBotApi(token = "123:secret-token"): Promise<FakeBotApi
     calls: [],
     failSend: false,
     nextMessageId: 9001,
-    close: () => new Promise((resolve) => server.close(() => resolve())),
+    // close() alone waits for keep-alive sockets. A poll still in its retry holds one, so the
+    // after-hook never reaches abort and the retry logs forever (Ubuntu CI).
+    close: () =>
+      new Promise((resolve) => {
+        server.close(() => resolve())
+        server.closeAllConnections()
+      }),
   }
   const server = http.createServer((req, res) => {
     let body = ""

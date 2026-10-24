@@ -21,10 +21,16 @@ def write_png(path: Path, size: int, pixel) -> None:
     path.write_bytes(png)
 
 
-def cover(size: int):
+def cover(size: int, badge=None):
     ink = (36, 92, 74)
 
     def pixel(x: int, y: int):
+        if badge:
+            # A filled dot in the lower right corner for a tray health warning.
+            spot = math.hypot(x / size - 0.78, y / size - 0.78)
+            spot_alpha = max(0.0, min(1.0, (0.2 - spot) * size))
+            if spot_alpha > 0:
+                return (badge[0], badge[1], badge[2], int(round(spot_alpha * 255)))
         cx = (size - 1) / 2
         cy = (size - 1) / 2
         dx = (x - cx) / size
@@ -43,3 +49,5 @@ if __name__ == "__main__":
     out = Path("assets")
     out.mkdir(exist_ok=True)
     write_png(out / "icon.png", 512, cover(512))
+    write_png(out / "icon-failing.png", 512, cover(512, (211, 47, 47)))
+    write_png(out / "icon-not-drained.png", 512, cover(512, (237, 160, 0)))
