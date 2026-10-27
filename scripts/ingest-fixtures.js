@@ -2,13 +2,14 @@ const fs = require("node:fs")
 const os = require("node:os")
 const path = require("node:path")
 const { createSecondBrain } = require("../dist/create-second-brain")
-const { freeEngine, openAiEngine } = require("../dist/engine")
+const { freeEngine, keyEngine, keyProviders } = require("../dist/engine")
 const { ingestNow, spawnOpencode } = require("../dist/ingest-now")
 
 // Runs the real ingest skill on tests/fixtures/ingest/ with one model, then makes the checks of
 // tests/ingest-fixtures.sh in adib-11/second-brain and prints the pass rate. The scratch brain is kept for a
-// reviewer to read the Pages. Needs the network, `npm run build` and `node scripts/fetch-opencode.js`; an
-// openai/ model needs OPENAI_API_KEY. Not part of `npm test`.
+// reviewer to read the Pages. Needs the network, `npm run build` and `node scripts/fetch-opencode.js`; a
+// Key Engine's model needs its provider's key in the env (OPENAI_API_KEY,
+// GOOGLE_GENERATIVE_AI_API_KEY, ANTHROPIC_API_KEY or OPENROUTER_API_KEY). Not part of `npm test`.
 // Run: node scripts/ingest-fixtures.js opencode/glm-5.3-flash-free
 const model = process.argv[2]
 if (!model) {
@@ -18,8 +19,10 @@ if (!model) {
 const root = path.join(__dirname, "..")
 const fixtures = path.join(root, "tests", "fixtures", "ingest")
 const bin = path.join(root, "vendor", "opencode", process.platform === "win32" ? "opencode.exe" : "opencode")
-const engine = model.startsWith("openai/")
-  ? { ...openAiEngine(process.env.OPENAI_API_KEY ?? ""), models: [model] }
+// A Key Engine's model takes its key from that provider's env variable, as the app passes it.
+const provider = Object.keys(keyProviders).find((id) => keyProviders[id].model.split("/")[0] === model.split("/")[0])
+const engine = provider
+  ? { ...keyEngine(provider, process.env[keyProviders[provider].env] ?? ""), models: [model] }
   : { ...freeEngine, models: [model] }
 
 async function main() {

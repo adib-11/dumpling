@@ -54,8 +54,40 @@ document.getElementById("browse").addEventListener("click", async () => {
   if (picked) input.value = picked
 })
 
+const providers = document.getElementById("providers")
+const keyWhere = document.getElementById("key-where")
+
+function chosenProvider() {
+  return new FormData(document.getElementById("key-form")).get("provider")
+}
+
+// Says where the Dumps go for the provider picked. Only OpenAI gets the line about training.
+function describeProvider(offered) {
+  const provider = offered.find((each) => each.id === chosenProvider())
+  if (!provider) return
+  const training = provider.id === "openai" ? " OpenAI does not use API data for training by default." : ""
+  const voice = provider.audio ? "" : " Voice notes wait until you add an OpenAI or Gemini key."
+  keyWhere.textContent = `Your Dumps go to ${provider.label}, and Ingest uses your key with ${provider.model}.${training}${voice} The key is stored in the OS keychain.`
+}
+
+window.wizard.providers().then((offered) => {
+  offered.forEach((provider, index) => {
+    const label = document.createElement("label")
+    label.className = "choice"
+    const radio = document.createElement("input")
+    radio.type = "radio"
+    radio.name = "provider"
+    radio.value = provider.id
+    radio.checked = index === 0
+    radio.addEventListener("change", () => describeProvider(offered))
+    label.append(radio, ` ${provider.label}`)
+    providers.append(label)
+  })
+  describeProvider(offered)
+})
+
 document.getElementById("open-keys").addEventListener("click", () => {
-  void window.wizard.openKeyPage()
+  void window.wizard.openKeyPage(chosenProvider())
 })
 
 document.getElementById("folder-form").addEventListener("submit", async (event) => {
@@ -85,7 +117,7 @@ document.getElementById("key-form").addEventListener("submit", async (event) => 
   event.preventDefault()
   keyError.textContent = ""
   saveKey.disabled = true
-  const result = await window.wizard.saveKey(keyInput.value)
+  const result = await window.wizard.saveKey(chosenProvider(), keyInput.value)
   if (!result.ok) {
     keyError.textContent = result.error
     saveKey.disabled = false

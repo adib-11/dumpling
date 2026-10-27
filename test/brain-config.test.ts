@@ -49,4 +49,8 @@ test("the chosen Engine is remembered, and none is chosen at first", () => {
   assert.equal(readBrainFolder(configPath), "/home/ada/Documents/Second Brain")
   writeEngineChoice(configPath, "openai")
   assert.equal(readEngineChoice(configPath), "openai")
+  writeEngineChoice(configPath, "gemini")
+  assert.equal(readEngineChoice(configPath), "gemini")
+  fs.writeFileSync(configPath, JSON.stringify({ engine: "mistral" }))
+  assert.equal(readEngineChoice(configPath), null)
 })

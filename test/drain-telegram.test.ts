@@ -193,7 +193,7 @@ test("with an Engine that takes no audio, a voice note is a placeholder Dump tha
       "telegram_message_id: 11",
       "telegram_file_id: vo",
       "---",
-      "voice note not transcribed: a key is needed. The audio is kept in 2026-10-21-140000-telegram.ogg.",
+      "voice note not transcribed: an OpenAI or Gemini key is needed. The audio is kept in 2026-10-21-140000-telegram.ogg.",
       "",
       "from the car",
       "",

@@ -13,7 +13,7 @@ import {
 } from "electron"
 import fs from "node:fs"
 import path from "node:path"
-import { acceptApiKey, loadApiKey } from "./api-key"
+import { acceptApiKey, keyFileName, loadApiKey } from "./api-key"
 import { askQuestion, type AskResult } from "./ask"
 import {
   readBrainFolder,
@@ -25,7 +25,7 @@ import {
 } from "./brain-config"
 import { createSecondBrain, defaultSecondBrainFolder } from "./create-second-brain"
 import { pollTelegram, type Asker } from "./drain-telegram"
-import { engineMedia, freeEngine, openAiEngine, type Engine } from "./engine"
+import { engineMedia, freeEngine, isProvider, keyEngine, keyProviders, offeredProviders, type Engine, type Provider } from "./engine"
 import { ytDlpAt } from "./fetch-link"
 import { backupRemote, hideCredentials, setBackupRemote } from "./git-remote"
 import { ingestNow, lastIngestStatus, spawnOpencode, undoLastIngest, type IngestResult } from "./ingest-now"
@@ -34,8 +34,6 @@ import { claimDailyIngest, readDrain, rememberDrain } from "./schedule"
 import { connectBot, ingestBot, telegramBot } from "./telegram"
 import { trayHealth, trayMenuItems, type TrayHealth, type TrayMenuItem } from "./tray-menu"
 import { newerRelease, type NewRelease } from "./update-check"
-
-const openaiKeysUrl = "https://platform.openai.com/api-keys"
 
 let tray: Tray | null = null
 let wizard: BrowserWindow | null = null
@@ -54,8 +52,8 @@ function configPath(): string {
   return path.join(app.getPath("userData"), "config.json")
 }
 
-function keyFile(): string {
-  return path.join(app.getPath("userData"), "openai-key.bin")
+function keyFile(provider: Provider): string {
+  return path.join(app.getPath("userData"), keyFileName(provider))
 }
 
 function tokenPath(): string {
@@ -68,10 +66,10 @@ function keychainReady(): boolean {
   return safeStorage.isEncryptionAvailable() && !plainText
 }
 
-function storedKey(): string | null {
+function storedKey(provider: Provider): string | null {
   try {
     if (!keychainReady()) return null
-    return loadApiKey(keyFile(), safeStorage)
+    return loadApiKey(keyFile(provider), safeStorage)
   } catch {
     return null
   }
@@ -107,9 +105,11 @@ function opencodeBin(): string {
 // The Owner's one Engine, or null before setup chooses one. An install from before Engines with a key has
 // the OpenAI Key Engine.
 function currentEngine(): Engine | null {
-  if (readEngineChoice(configPath()) === "free") return freeEngine
-  const key = storedKey()
-  return key ? openAiEngine(key) : null
+  const choice = readEngineChoice(configPath())
+  if (choice === "free") return freeEngine
+  const provider = choice ?? "openai"
+  const key = storedKey(provider)
+  return key ? keyEngine(provider, key) : null
 }
 
 function redact(text: string, secret: string): string {
@@ -509,15 +509,22 @@ function start(): void {
     }
   })
 
-  ipcMain.handle("wizard:open-key-page", () => shell.openExternal(openaiKeysUrl))
+  ipcMain.handle("wizard:providers", () => offeredProviders())
 
-  ipcMain.handle("wizard:save-key", async (_event, key: unknown) => {
+  ipcMain.handle("wizard:open-key-page", (_event, provider: unknown) => {
+    if (isProvider(provider)) return shell.openExternal(keyProviders[provider].keysUrl)
+  })
+
+  ipcMain.handle("wizard:save-key", async (_event, provider: unknown, key: unknown) => {
+    if (!isProvider(provider) || !offeredProviders().some((offered) => offered.id === provider)) {
+      return { ok: false as const, error: "Choose a provider." }
+    }
     if (typeof key !== "string") return { ok: false as const, error: "Paste a key." }
     if (!keychainReady()) {
       return { ok: false as const, error: "The OS keychain is not available." }
     }
-    const result = await acceptApiKey(key, keyFile(), safeStorage, fetch)
-    if (result.ok) writeEngineChoice(configPath(), "openai")
+    const result = await acceptApiKey(provider, key, keyFile(provider), safeStorage, fetch)
+    if (result.ok) writeEngineChoice(configPath(), provider)
     if (result.ok && telegramConnected()) wizard?.close()
     return result
   })
