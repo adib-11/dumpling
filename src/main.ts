@@ -26,6 +26,7 @@ import { enableLinuxAutostart } from "./login-item"
 import { claimDailyIngest, readDrain, rememberDrain } from "./schedule"
 import { connectBot, ingestBot, telegramBot } from "./telegram"
 import { trayHealth, trayMenuItems, type TrayHealth, type TrayMenuItem } from "./tray-menu"
+import { newerRelease, type NewRelease } from "./update-check"
 
 const openaiKeysUrl = "https://platform.openai.com/api-keys"
 
@@ -40,6 +41,7 @@ let awakeSince = Date.now()
 let health: TrayHealth = "ok"
 let wizardStep: "remote" | null = null
 let backupFailed = false
+let newRelease: NewRelease | null = null
 
 function configPath(): string {
   return path.join(app.getPath("userData"), "config.json")
@@ -312,16 +314,19 @@ function toMenuItem(item: TrayMenuItem): Electron.MenuItemConstructorOptions {
                 ? () => openWizard("remote")
                 : item.action === "ask"
                   ? () => openAsk()
-                  : undefined,
+                  : item.action === "update"
+                    ? () => {
+                        if (newRelease) void shell.openExternal(newRelease.url)
+                      }
+                    : undefined,
   }
 }
 
 function rebuildMenu(): void {
   if (!tray) return
   const folder = readBrainFolder(configPath())
-  tray.setContextMenu(
-    Menu.buildFromTemplate(trayMenuItems(folder, telegramConnected(), backupFailed, unsaved).map(toMenuItem)),
-  )
+  const items = trayMenuItems(folder, telegramConnected(), backupFailed, unsaved, newRelease?.version ?? null)
+  tray.setContextMenu(Menu.buildFromTemplate(items.map(toMenuItem)))
   tray.setToolTip(trayTip())
 }
 
@@ -377,6 +382,13 @@ async function runIngest(fromTray: boolean): Promise<void> {
     notify(redact(`Ingest failed: ${message}`, apiKey))
   }
   refreshHealth()
+}
+
+async function checkForUpdate(): Promise<void> {
+  const found = await newerRelease(app.getVersion(), fetch)
+  if (found?.version === newRelease?.version) return
+  newRelease = found
+  rebuildMenu()
 }
 
 async function undoFromTray(): Promise<void> {
@@ -560,6 +572,8 @@ function start(): void {
     }
     tick()
     setInterval(tick, 60 * 1000)
+    void checkForUpdate()
+    setInterval(() => void checkForUpdate(), 24 * 3600 * 1000)
   })
 }
 

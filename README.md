@@ -2,13 +2,25 @@
 
 A tray app for a second brain on your own computer. It is free and open source. There is no server and no support promise.
 
-The product spec lives in the private repo [adib-11/second-brain](https://github.com/adib-11/second-brain), file `docs/spec/shareable.md`. This repo is the shareable app.
+Send it a thought, a link, a voice note or a photo from Telegram on your phone. Once a day it files them into a wiki of markdown pages on your computer, written by an OpenAI model on your own key. Ask it questions with `/ask` and it answers from what you filed.
 
-So far it has the tray, the folder, OpenAI key and bot steps of the wizard, Telegram capture for text, voice and photos, Ingest now with link fetching and the daily Ingest with Undo, tray health, Recall and Persona questions (`/ask` in Telegram and the tray Ask box), an opt-in git remote for backup, and the release pipeline.
+## Start here
+
+You need a Mac (Apple silicon), Windows or Linux computer that is awake at least once a day, Telegram on your phone, and an OpenAI API key with some credit on it. Expect about $1 to $2 a month in OpenAI cost for 10 Dumps a day.
+
+1. **Download.** Open the [latest release](https://github.com/adib-11/second-brain-app/releases/latest) and download the file for your system (see the table below).
+2. **Open it.** The app is unsigned, so your system warns you once. Follow the steps for [Mac](#mac), [Windows](#windows) or [Linux](#linux). The app then sits in the menu bar (Mac) or system tray (Windows, Linux), and a setup window opens.
+3. **Choose a folder.** Keep the default, `Documents/Second Brain`, and choose Create.
+4. **Paste an OpenAI API key.** Choose Get a key to open OpenAI's key page, create a key, paste it, and choose Save key. The app checks it and keeps it in your system's keychain.
+5. **Make a Telegram bot.** Choose Open BotFather, send it `/newbot` in Telegram, pick any name, paste the token it gives you, and choose Check.
+6. **Send `/start` to your new bot** from your phone. The bot replies "Connected". Only this chat can send to it.
+7. **Send your first Dump.** Send the bot any message, for example a thought or a link. Within seconds it disappears from the chat: it is saved in the folder's `inbox/`.
+8. **File it.** Choose Ingest now in the tray menu. After a minute or two the Dump is filed into pages under `vault/wiki/` in your folder. Open `vault/` in [Obsidian](https://obsidian.md) to read them, or any text editor. Without Ingest now, the app files everything by itself once a day.
+9. **Ask.** Send the bot `/ask what did I save today?`. It replies from your pages, naming the pages it used. Ask… in the tray menu does the same in a window.
+
+That is all. The rest of this page is detail.
 
 ## Download
-
-Draft installers are attached to a draft GitHub Release. The release workflow runs when a `v*` tag is pushed, and it can also be started by hand (Actions → Release → Run workflow, with a tag such as `v0.1.0`). The files are unsigned. The Mac build is ad-hoc signed so macOS does not call it damaged.
 
 | System | File | After download |
 | --- | --- | --- |
@@ -80,11 +92,17 @@ Ingest now files markdown Dumps dropped in `inbox/`. It runs the bundled opencod
 
 Ingest also runs by itself once a day: at 03:00, or at the first wake after it if the computer was asleep, right after a Telegram drain. A chunk fails on a non-zero exit, a 20 minute timeout, or no change in `vault/wiki/`. Its edits go to a git stash named `failed ingest <time>` (never a reset), its Dumps stay in `inbox/`, and a desktop notification names the stash. A Dump that failed twice is retried alone, and one that fails twice alone moves to `inbox/failed/`. The tray icon gets a red dot after a failed Ingest and an amber dot when Telegram has not drained for 20 h. Undo last Ingest reverts the newest `ingest:` commit, which restores the wiki and puts its Dumps back in `inbox/`; an Undo that would overwrite a later edit changes nothing.
 
+## Updates
+
+The app does not update itself. Once a day it asks GitHub for the latest release. When a newer one exists, the tray menu shows "New version x.y.z…", which opens the release page. Download and install it as before; your folder, key and bot stay as they are.
+
 ## Templates
 
 `templates/` is copied from [adib-11/second-brain](https://github.com/adib-11/second-brain) at the commit in `templates/SOURCE_COMMIT`. The app owns those files inside each second brain. `tests/fixtures/ingest` is the v1 fixture set from that repo, with no keys or personal notes.
 
 ## Development
+
+The product spec lives in the private repo adib-11/second-brain, file `docs/spec/shareable.md`.
 
 Node 22.
 
@@ -98,3 +116,7 @@ npm start
 `node scripts/fetch-opencode.js` and `node scripts/fetch-yt-dlp.js` put the bundled binaries in `vendor/`. `node scripts/fetch-link-live.js` (after `npm run build`) fetches one real link per route and prints each result; it needs the network, so it is not part of `npm test`.
 
 `npm start` opens the wizard and the tray. It does not register a login item; that happens in the packaged app.
+
+### Releasing
+
+The release workflow builds unsigned installers and attaches them to a draft GitHub Release. It runs when a `v*` tag is pushed, and it can also be started by hand (Actions → Release → Run workflow, with a tag such as `v0.1.0`). The Mac build is ad-hoc signed so macOS does not call it damaged. Bump `version` in `package.json` to match the tag, since the update check compares the two. Publishing the draft makes it the latest release, which the app links to.
