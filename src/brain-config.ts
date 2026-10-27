@@ -1,9 +1,13 @@
 import fs from "node:fs"
+import type { Engine } from "./engine"
 
 type Config = {
   brainFolder?: unknown
   telegramChat?: unknown
+  engine?: unknown
 }
+
+export type EngineChoice = Engine["name"]
 
 export function readBrainFolder(configPath: string): string | null {
   const { brainFolder } = readConfig(configPath)
@@ -21,6 +25,16 @@ export function readTelegramChat(configPath: string): number | null {
 
 export function writeTelegramChat(configPath: string, chat: number): void {
   writeConfig(configPath, { ...readConfig(configPath), telegramChat: chat })
+}
+
+// Null until the Owner picks one in setup.
+export function readEngineChoice(configPath: string): EngineChoice | null {
+  const { engine } = readConfig(configPath)
+  return engine === "free" || engine === "openai" ? engine : null
+}
+
+export function writeEngineChoice(configPath: string, engine: EngineChoice): void {
+  writeConfig(configPath, { ...readConfig(configPath), engine })
 }
 
 function readConfig(configPath: string): Config {

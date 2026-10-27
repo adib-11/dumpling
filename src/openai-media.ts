@@ -5,7 +5,7 @@ const imageUrl = "https://api.openai.com/v1/chat/completions"
 const imageModel = "gpt-5.6-luna"
 
 // The Owner's key, already read from the OS keychain. It is sent only as a header.
-export function openAiMedia(key: string, fetchImpl: typeof fetch = fetch): MediaReader {
+export function openAiMedia(key: string, fetchImpl: typeof fetch = fetch): Required<MediaReader> {
   return {
     async transcribe(audio: Buffer) {
       const body = new FormData()

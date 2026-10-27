@@ -169,6 +169,47 @@ test("a Bangla and English voice note becomes a text Dump and no audio is kept",
   assert.equal(api.confirmed, 2)
 })
 
+test("with an Engine that takes no audio, a voice note is a placeholder Dump that keeps the audio beside it", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  const audio = Buffer.from("OggS-voice")
+  api.files.set("vo", audio)
+  api.updates = [message(1, 11, at, { voice: { file_id: "vo", file_size: 900 }, caption: "from the car" })]
+
+  await drainTelegram(bot, folder, 111, undefined, undefined, {
+    async readImage() {
+      return ""
+    },
+  })
+
+  assert.equal(
+    fs.readFileSync(path.join(folder, "inbox", "2026-10-21-140000-telegram.md"), "utf8"),
+    [
+      "---",
+      "captured: 2026-10-21T14:00:00+06:00",
+      "device: telegram",
+      "kind: text",
+      "audio: 2026-10-21-140000-telegram.ogg",
+      "telegram_message_id: 11",
+      "telegram_file_id: vo",
+      "---",
+      "voice note not transcribed: a key is needed. The audio is kept in 2026-10-21-140000-telegram.ogg.",
+      "",
+      "from the car",
+      "",
+    ].join("\n"),
+  )
+  assert.equal(fs.readFileSync(path.join(folder, "inbox", "2026-10-21-140000-telegram.ogg")).equals(audio), true)
+  const log = await exec(["log", "-1", "--format=%s", "--name-only"], folder)
+  assert.deepEqual(log.stdout.trim().split("\n"), [
+    "drain: 1 Dumps",
+    "",
+    "inbox/2026-10-21-140000-telegram.md",
+    "inbox/2026-10-21-140000-telegram.ogg",
+  ])
+  assert.ok(api.calls.some((call) => call.method === "deleteMessage" && call.params.message_id === 11))
+})
+
 test("a failed transcription leaves the message in the chat and tells the tray", async (t) => {
   const { folder, api, bot } = await setup()
   t.after(api.close)

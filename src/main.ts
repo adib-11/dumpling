@@ -15,12 +15,19 @@ import fs from "node:fs"
 import path from "node:path"
 import { acceptApiKey, loadApiKey } from "./api-key"
 import { askQuestion, type AskResult } from "./ask"
-import { readBrainFolder, readTelegramChat, writeBrainFolder, writeTelegramChat } from "./brain-config"
+import {
+  readBrainFolder,
+  readEngineChoice,
+  readTelegramChat,
+  writeBrainFolder,
+  writeEngineChoice,
+  writeTelegramChat,
+} from "./brain-config"
 import { createSecondBrain, defaultSecondBrainFolder } from "./create-second-brain"
 import { pollTelegram, type Asker } from "./drain-telegram"
+import { engineMedia, freeEngine, openAiEngine, type Engine } from "./engine"
 import { ytDlpAt } from "./fetch-link"
 import { backupRemote, hideCredentials, setBackupRemote } from "./git-remote"
-import { openAiMedia } from "./openai-media"
 import { ingestNow, lastIngestStatus, spawnOpencode, undoLastIngest, type IngestResult } from "./ingest-now"
 import { enableLinuxAutostart } from "./login-item"
 import { claimDailyIngest, readDrain, rememberDrain } from "./schedule"
@@ -39,7 +46,7 @@ let unsaved: string | null = null
 let lastDrained: Date | null = null
 let awakeSince = Date.now()
 let health: TrayHealth = "ok"
-let wizardStep: "remote" | null = null
+let wizardStep: "remote" | "key" | null = null
 let backupFailed = false
 let newRelease: NewRelease | null = null
 
@@ -97,6 +104,14 @@ function opencodeBin(): string {
   return vendorBin("opencode")
 }
 
+// The Owner's one Engine, or null before setup chooses one. An install from before Engines with a key has
+// the OpenAI Key Engine.
+function currentEngine(): Engine | null {
+  if (readEngineChoice(configPath()) === "free") return freeEngine
+  const key = storedKey()
+  return key ? openAiEngine(key) : null
+}
+
 function redact(text: string, secret: string): string {
   return secret === "" ? text : text.split(secret).join("[redacted]")
 }
@@ -105,9 +120,9 @@ function telegramConnected(): boolean {
   return readTelegramChat(configPath()) !== null && loadToken() !== null
 }
 
-function setupStep(): "folder" | "key" | "bot" | null {
+function setupStep(): "folder" | "engine" | "bot" | null {
   if (readBrainFolder(configPath()) === null) return "folder"
-  if (storedKey() === null) return "key"
+  if (currentEngine() === null) return "engine"
   if (!telegramConnected()) return "bot"
   return null
 }
@@ -119,7 +134,6 @@ function startPolling(): void {
   if (polling || !folder || chat === null || !token) return
   polling = true
   lastDrained = readDrain(drainStamp(folder)) ?? new Date()
-  const key = storedKey()
   // The daily Ingest starts right after a drain, so it files what Telegram held overnight.
   void pollTelegram(
     telegramBot(token),
@@ -136,7 +150,11 @@ function startPolling(): void {
       refreshHealth()
     },
     {
-      media: key ? openAiMedia(key) : undefined,
+      // Read on each drain, so a key added later transcribes the next voice note.
+      get media() {
+        const engine = currentEngine()
+        return engine ? engineMedia(engine, (run) => spawnOpencode(opencodeBin(), run)) : undefined
+      },
       onUnsaved(notice) {
         if (notice === unsaved) return
         unsaved = notice
@@ -152,12 +170,23 @@ function drainStamp(folder: string): string {
 
 function dailyIngest(): void {
   const folder = readBrainFolder(configPath())
-  if (!folder || storedKey() === null) return
+  if (!folder || currentEngine() === null) return
   if (claimDailyIngest(path.join(folder, ".state", "daily-ingest"), new Date())) void runIngest(false)
 }
 
-function notify(body: string): void {
-  if (Notification.isSupported()) new Notification({ title: "Second Brain", body }).show()
+// "add-key" offers to add a key: a button where the system shows one, and a click on the notification anywhere.
+function notify(body: string, offer?: "add-key"): void {
+  if (!Notification.isSupported()) return
+  const notice = new Notification({
+    title: "Second Brain",
+    body,
+    ...(offer && { actions: [{ type: "button" as const, text: "Add a key" }] }),
+  })
+  if (offer) {
+    notice.on("click", () => openWizard("key"))
+    notice.on("action", () => openWizard("key"))
+  }
+  notice.show()
 }
 
 function trayImage(state: TrayHealth): Electron.NativeImage {
@@ -192,11 +221,11 @@ function asker(): Asker {
 // The one path every question takes: the tray Ask box and Telegram /ask both run this.
 async function runAsk(question: string): Promise<AskResult> {
   const folder = readBrainFolder(configPath())
-  const apiKey = storedKey()
-  if (!folder || !apiKey) return { status: "failed", reason: "The app is not set up." }
+  const engine = currentEngine()
+  if (!folder || !engine) return { status: "failed", reason: "The app is not set up." }
   return askQuestion({
     brain: folder,
-    apiKey,
+    engine,
     question,
     runner: (run) => spawnOpencode(opencodeBin(), run),
   })
@@ -225,7 +254,7 @@ function enableLogin(): void {
   }
 }
 
-function openWizard(step: "remote" | null = null): void {
+function openWizard(step: "remote" | "key" | null = null): void {
   if (wizard && step !== null) {
     wizardStep = step
     wizard.reload()
@@ -354,8 +383,8 @@ async function runIngest(fromTray: boolean): Promise<void> {
     if (fromTray) openWizard()
     return
   }
-  const apiKey = storedKey()
-  if (!apiKey) {
+  const engine = currentEngine()
+  if (!engine) {
     if (fromTray) openWizard()
     return
   }
@@ -367,19 +396,19 @@ async function runIngest(fromTray: boolean): Promise<void> {
   try {
     const result = await ingestNow({
       brain: folder,
-      apiKey,
+      engine,
       runner: (run) => spawnOpencode(bin, run),
       links: { fetch, ytDlp: ytDlpAt(vendorBin("yt-dlp"), vendorBin("deno")) },
-      notify: (text) => notify(redact(text, apiKey)),
+      notify: (text, offer) => notify(redact(text, engine.key), offer),
       ...ingestBot(loadToken(), readTelegramChat(configPath())),
       daily: !fromTray,
     })
-    if (result.status === "failed") console.error(redact(result.reason ?? "Ingest failed.", apiKey))
+    if (result.status === "failed") console.error(redact(result.reason ?? "Ingest failed.", engine.key))
     showPush(result)
   } catch (error) {
     const message = error instanceof Error ? error.message : "Ingest failed."
-    console.error(redact(message, apiKey))
-    notify(redact(`Ingest failed: ${message}`, apiKey))
+    console.error(redact(message, engine.key))
+    notify(redact(`Ingest failed: ${message}`, engine.key))
   }
   refreshHealth()
 }
@@ -488,8 +517,14 @@ function start(): void {
       return { ok: false as const, error: "The OS keychain is not available." }
     }
     const result = await acceptApiKey(key, keyFile(), safeStorage, fetch)
+    if (result.ok) writeEngineChoice(configPath(), "openai")
     if (result.ok && telegramConnected()) wizard?.close()
     return result
+  })
+
+  ipcMain.handle("wizard:start-free", () => {
+    writeEngineChoice(configPath(), "free")
+    if (telegramConnected()) wizard?.close()
   })
 
   ipcMain.handle("wizard:default-folder", () =>

@@ -5,6 +5,7 @@ import path from "node:path"
 import test from "node:test"
 import { createSecondBrain } from "../src/create-second-brain"
 import { askQuestion, type AskResult } from "../src/ask"
+import { freeEngine, freeModels } from "../src/engine"
 import type { AgentRun } from "../src/ingest-now"
 
 const templates = path.join(__dirname, "..", "templates")
@@ -109,4 +110,27 @@ test("a question that quotes the key is not passed to the runner as an argument"
   assert.equal(result.status, "ok")
   assert.equal(prompts[0].includes(key), false)
   assert.equal(prompts[0].includes("[redacted]"), true)
+})
+
+test("with Start free and no key, /ask answers from the Pages, on the fallback when the default is limited", async () => {
+  const folder = await brain()
+  const calls: AgentRun[] = []
+  const result = await askQuestion({
+    brain: folder,
+    engine: freeEngine,
+    question: "what do I think about tea?",
+    runner: async (run) => {
+      calls.push(run)
+      return calls.length === 1
+        ? { code: 1, stdout: '{"type":"error","error":{"name":"APIError","data":{"statusCode":429}}}' }
+        : { code: 0, stdout: '{"type":"text","part":{"type":"text","text":"You like it ([[tea]])."}}' }
+    },
+  })
+
+  assert.deepEqual(result, { status: "ok", answer: "You like it ([[tea]])." })
+  assert.deepEqual(calls.map((run) => run.args.slice(0, 5)), [
+    ["run", "-m", freeModels[0], "--agent", "ask"],
+    ["run", "-m", freeModels[1], "--agent", "ask"],
+  ])
+  assert.equal(calls[1].cwd, folder)
 })

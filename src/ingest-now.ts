@@ -5,6 +5,7 @@ import { exec } from "dugite"
 import { lockBrain } from "./brain-lock"
 import { checkIngest } from "./check-ingest"
 import { commitNewDumps } from "./drain-telegram"
+import { engineOf, engineRun, missingKey, unavailable, type Engine } from "./engine"
 import { fetchLinks, type LinkTools } from "./fetch-link"
 import { filedToday } from "./filed-today"
 import { pushBackup, type PushResult } from "./git-remote"
@@ -69,13 +70,16 @@ export async function spawnOpencode(
 
 export async function ingestNow(options: {
   brain: string
-  apiKey: string
+  // The Engine, or an OpenAI key alone for the OpenAI Key Engine.
+  engine?: Engine
+  apiKey?: string
   runner: AgentRunner
   links?: LinkTools
   today?: string
   now?: Date
   timeoutMs?: number
-  notify?: (text: string) => void
+  // "add-key" when a key would let the run go on: the notification offers to add one.
+  notify?: (text: string, offer?: "add-key") => void
   bot?: Bot
   chat?: number
   // The scheduled Ingest also sends the "Filed today" message.
@@ -88,6 +92,12 @@ export async function ingestNow(options: {
   const today = options.today ?? localDate(now)
   const limit = options.timeoutMs ?? chunkTimeoutMs
   const notify = options.notify ?? (() => {})
+  const engine = engineOf(options)
+  // The Engine's model in use. A 429 or a gone model moves to the next for the rest of the run.
+  let modelIndex = 0
+  let limited = false
+  // This chunk is on the fallback after a 429 or a gone model.
+  let fellBack = false
   let status: IngestResult["status"] = "ok"
   let cost = 0
   let check = "ok"
@@ -100,20 +110,19 @@ export async function ingestNow(options: {
 
   // Runs the agent once. Returns why it failed, if it did.
   const ask = async (prompt: string): Promise<string | undefined> => {
-    const secret = options.apiKey.trim()
+    const secret = engine.key.trim()
     const safePrompt = secret === "" ? prompt : prompt.split(secret).join("[redacted]")
     const alarm = new AbortController()
     const timer = setTimeout(() => alarm.abort(), limit)
     const timedOut = `timed out after ${limit / 1000}s`
+    limited = false
     try {
-      const run = await options.runner({
-        args: ["run", "-m", "openai/gpt-5.6-luna", "--agent", "ingest", "--format", "json", safePrompt],
-        env: { ...process.env, OPENAI_API_KEY: options.apiKey },
-        cwd: options.brain,
-        signal: alarm.signal,
-      })
+      const run = await options.runner(
+        engineRun(engine, engine.models[modelIndex], ["--agent", "ingest", "--format", "json", safePrompt], options.brain, alarm.signal),
+      )
       cost = round4(cost + costOf(run.stdout))
       if (alarm.signal.aborted) return timedOut
+      limited = run.code !== 0 && unavailable(run.stdout)
       return run.code === 0 ? undefined : `runner exited ${run.code}`
     } catch (error) {
       if (alarm.signal.aborted) return timedOut
@@ -164,12 +173,13 @@ export async function ingestNow(options: {
           options.links,
         )
       }
-      if (pending.length > 0 && options.apiKey.trim() === "") {
+      const missing = missingKey(engine)
+      if (pending.length > 0 && missing) {
         // Never counted against the Dumps.
         status = "failed"
         failed = pending.length
-        reason = "OpenAI API key is missing"
-        notify("Ingest stopped: the OpenAI API key is missing.")
+        reason = missing
+        notify(`Ingest stopped: the ${missing}.`)
       }
       const fails = readFails(options.brain)
       while (status === "ok" && pending.length > 0) {
@@ -178,11 +188,25 @@ export async function ingestNow(options: {
         const poison = chunk.find((dump) => (fails.get(stemOf(dump)) ?? 0) >= 2)
         if (poison) chunk = [poison]
         const why = await fileChunk(chunk)
+        if (why && limited && modelIndex + 1 < engine.models.length) {
+          // The fallback refiles the chunk from scratch, so the default's edits go to a stash first.
+          stash = (await stashChunk(options.brain, now)) ?? stash
+          modelIndex += 1
+          fellBack = true
+          continue
+        }
         if (why) {
           // The chunk's edits go to a stash, never a reset, and its Dumps stay in inbox/.
           stash = await stashChunk(options.brain, now)
           status = "failed"
           failed = chunk.length
+          if (engine.name === "free" && (limited || fellBack)) {
+            // Not the Dumps' fault, so nothing counts against them. A key would file them.
+            reason = "the free models are unavailable"
+            const stashed = stash ? ` Stash: ${stash}.` : ""
+            notify(`Ingest failed: ${reason}. ${chunk.length} Dumps stay in inbox/.${stashed} Add a key to keep filing.`, "add-key")
+            break
+          }
           reason = why
           notify(`Ingest failed: ${why}. ${chunk.length} Dumps stay in inbox/.${stash ? ` Stash: ${stash}.` : ""}`)
           for (const dump of chunk) fails.set(stemOf(dump), (fails.get(stemOf(dump)) ?? 0) + 1)
@@ -197,6 +221,7 @@ export async function ingestNow(options: {
           writeFails(options.brain, fails)
           break
         }
+        fellBack = false
         for (const dump of chunk) {
           const stem = stemOf(dump)
           moveDump(options.brain, dump, path.join("vault", "raw", stem.slice(0, 4), stem.slice(5, 7)))

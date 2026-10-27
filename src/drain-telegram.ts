@@ -15,9 +15,10 @@ export type Asker = (question: string) => Promise<string>
 // Telegram caps one message at 4096 characters; split answers a little under that.
 const telegramMessageChars = 4000
 
-// Voice is transcribed through this. Tests pass a fake; the app passes the Owner's key. Nothing here calls OpenAI itself.
+// Voice and photos are read through this. Tests pass a fake; the app passes the Engine's. Nothing here calls a model
+// itself. An Engine with no transcribe takes no audio.
 export type MediaReader = {
-  transcribe(audio: Buffer): Promise<string>
+  transcribe?(audio: Buffer): Promise<string>
   readImage(jpeg: Buffer): Promise<string>
 }
 
@@ -130,7 +131,7 @@ async function capture(
   const picture = largestPhoto(message.photo) ?? imageDocument(message)
   if (picture) return captureImage(bot, folder, message, picture, known, media)
   const voice = message.voice ?? message.audio
-  if (voice) return captureVoice(bot, folder, message, voice.file_id, known, media)
+  if (voice) return captureVoice(bot, folder, message, voice, known, media)
   if (message.document) {
     if (known.file.has(`${message.message_id}\n${message.document.file_id}`)) return { status: "duplicate" }
     const words = message.caption ?? ""
@@ -171,17 +172,30 @@ async function captureVoice(
   bot: Bot,
   folder: string,
   message: TelegramMessage,
-  fileId: string,
+  voice: TelegramFile,
   known: Known,
   media: MediaReader | undefined,
 ): Promise<CaptureResult> {
+  const fileId = voice.file_id
   // The file id is the content key. The transcript is not known until after the paid call, and a new bot
   // reuses message ids.
   if (known.file.has(`${message.message_id}\n${fileId}`)) return { status: "duplicate" }
   const caption = message.caption ?? ""
   let transcript: string
   try {
-    if (!media) throw new Error("no OpenAI key")
+    if (!media) throw new Error("no Engine")
+    if (!media.transcribe) {
+      // The Engine takes no audio, so the audio waits beside a placeholder until a key is added.
+      const audio = await bot.file(fileId)
+      const stem = freeStem(folder, message.date)
+      const name = `${stem}${path.extname(voice.file_name ?? "") || ".ogg"}`
+      const body = `voice note not transcribed: a key is needed. The audio is kept in ${name}.${caption ? `\n\n${caption}` : ""}`
+      const fields = [`audio: ${name}`, `telegram_message_id: ${message.message_id}`, `telegram_file_id: ${fileId}`]
+      writeDump(folder, stem, renderDump(folder, message, "text", body, fields), { name, data: audio })
+      known.file.add(`${message.message_id}\n${fileId}`)
+      known.body.add(`${message.message_id}\n${body}`)
+      return { status: "saved" }
+    }
     transcript = (await media.transcribe(await bot.file(fileId))).trim()
     if (!transcript) throw new Error("empty transcript")
   } catch (error) {
@@ -208,7 +222,7 @@ async function captureImage(
   let file: Buffer | undefined
   let jpeg: Buffer | undefined
   try {
-    if (!media) throw new Error("no OpenAI key")
+    if (!media) throw new Error("no Engine")
     file = await bot.file(fileId)
     jpeg = downscaleJpeg(file)
     const text = (await media.readImage(jpeg)).trim()
@@ -223,7 +237,7 @@ async function captureImage(
         `telegram_message_id: ${message.message_id}`,
         `telegram_file_id: ${fileId}`,
       ]),
-      jpeg,
+      { name: `${stem}.jpg`, data: jpeg },
     )
     known.file.add(`${message.message_id}\n${fileId}`)
     known.body.add(`${message.message_id}\n${body}`)
@@ -306,14 +320,14 @@ function renderDump(folder: string, message: TelegramMessage, kind: string, body
   )
 }
 
-function writeDump(folder: string, stem: string, contents: string, jpeg?: Buffer): void {
-  // Written outside inbox/ first, image before the Dump, so a half-written pair is never committed.
+function writeDump(folder: string, stem: string, contents: string, file?: { name: string; data: Buffer }): void {
+  // Written outside inbox/ first, the image or audio before the Dump, so a half-written pair is never committed.
   const dir = path.join(folder, ".state")
   fs.mkdirSync(dir, { recursive: true })
-  if (jpeg) {
-    const image = path.join(dir, `${stem}.jpg`)
-    fs.writeFileSync(image, jpeg)
-    fs.renameSync(image, path.join(folder, "inbox", `${stem}.jpg`))
+  if (file) {
+    const temp = path.join(dir, file.name)
+    fs.writeFileSync(temp, file.data)
+    fs.renameSync(temp, path.join(folder, "inbox", file.name))
   }
   const temp = path.join(dir, `${stem}.md`)
   fs.writeFileSync(temp, contents)
@@ -395,12 +409,14 @@ async function commitUnlessLocked(folder: string): Promise<void> {
 // Commits every Dump not yet in git, including any a failed commit left behind, and nothing else.
 export async function commitNewDumps(folder: string): Promise<void> {
   const status = await git(["status", "--porcelain", "-z", "--untracked-files=all", "--", "inbox"], folder)
-  const fresh = status
+  const untracked = status
     .split("\0")
-    .filter((entry) => entry.startsWith("?? ") && (entry.endsWith(".md") || entry.endsWith(".jpg")))
+    .filter((entry) => entry.startsWith("?? "))
     .map((entry) => entry.slice(3))
-  const dumps = fresh.filter((entry) => entry.endsWith(".md"))
+  const dumps = untracked.filter((entry) => entry.endsWith(".md"))
   if (!dumps.length) return
+  // A Dump's image or audio shares its stem: "<stem>." is the Dump name without "md".
+  const fresh = untracked.filter((entry) => dumps.some((dump) => entry.startsWith(dump.slice(0, -2))))
   await git(["add", "--", ...fresh], folder)
   await git(["commit", "-m", `drain: ${dumps.length} Dumps`, "--no-gpg-sign", "--", ...fresh], folder)
 }
