@@ -515,10 +515,10 @@ function start(): void {
     if (isProvider(provider)) return shell.openExternal(keyProviders[provider].keysUrl)
   })
 
-  ipcMain.handle("wizard:save-key", async (_event, provider: unknown, key: unknown) => {
-    if (!isProvider(provider) || !offeredProviders().some((offered) => offered.id === provider)) {
-      return { ok: false as const, error: "Choose a provider." }
-    }
+  ipcMain.handle("wizard:save-key", async (_event, chosen: unknown, key: unknown) => {
+    // The renderer's value only picks an entry; the id used for the key file comes from the app's own list.
+    const provider = offeredProviders().find((offered) => offered.id === chosen)?.id
+    if (!provider) return { ok: false as const, error: "Choose a provider." }
     if (typeof key !== "string") return { ok: false as const, error: "Paste a key." }
     if (!keychainReady()) {
       return { ok: false as const, error: "The OS keychain is not available." }
