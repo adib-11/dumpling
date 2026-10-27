@@ -185,11 +185,11 @@ async function captureVoice(
   try {
     if (!media) throw new Error("no Engine")
     if (!media.transcribe) {
-      // The Engine takes no audio, so the audio waits beside a placeholder until a key is added.
+      // The Engine takes no audio, so the audio waits beside a placeholder until a key that does is added.
       const audio = await bot.file(fileId)
       const stem = freeStem(folder, message.date)
       const name = `${stem}${path.extname(voice.file_name ?? "") || ".ogg"}`
-      const body = `voice note not transcribed: a key is needed. The audio is kept in ${name}.${caption ? `\n\n${caption}` : ""}`
+      const body = `voice note not transcribed: an OpenAI or Gemini key is needed. The audio is kept in ${name}.${caption ? `\n\n${caption}` : ""}`
       const fields = [`audio: ${name}`, `telegram_message_id: ${message.message_id}`, `telegram_file_id: ${fileId}`]
       writeDump(folder, stem, renderDump(folder, message, "text", body, fields), { name, data: audio })
       known.file.add(`${message.message_id}\n${fileId}`)

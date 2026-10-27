@@ -5,7 +5,7 @@ import { exec } from "dugite"
 import { lockBrain } from "./brain-lock"
 import { checkIngest } from "./check-ingest"
 import { commitNewDumps } from "./drain-telegram"
-import { engineOf, engineRun, missingKey, unavailable, type Engine } from "./engine"
+import { engineOf, engineRun, missingKey, runCost, unavailable, type Engine } from "./engine"
 import { fetchLinks, type LinkTools } from "./fetch-link"
 import { filedToday } from "./filed-today"
 import { pushBackup, type PushResult } from "./git-remote"
@@ -120,7 +120,7 @@ export async function ingestNow(options: {
       const run = await options.runner(
         engineRun(engine, engine.models[modelIndex], ["--agent", "ingest", "--format", "json", safePrompt], options.brain, alarm.signal),
       )
-      cost = round4(cost + costOf(run.stdout))
+      cost = round4(cost + runCost(run.stdout, engine.models[modelIndex]))
       if (alarm.signal.aborted) return timedOut
       limited = run.code !== 0 && unavailable(run.stdout)
       return run.code === 0 ? undefined : `runner exited ${run.code}`
@@ -332,20 +332,6 @@ function readFails(brain: string): Map<string, number> {
 function writeFails(brain: string, fails: Map<string, number>): void {
   fs.mkdirSync(path.join(brain, ".state"), { recursive: true })
   fs.writeFileSync(path.join(brain, ".state", "fails"), [...fails].map(([stem, n]) => `${stem} ${n}\n`).join(""))
-}
-
-function costOf(stdout: string): number {
-  let sum = 0
-  for (const line of stdout.split("\n")) {
-    if (line.trim() === "") continue
-    try {
-      const event = JSON.parse(line) as { type?: string; part?: { cost?: number } }
-      if (event.type === "step_finish" && typeof event.part?.cost === "number") sum += event.part.cost
-    } catch {
-      // The runner's other lines are not a cost.
-    }
-  }
-  return sum
 }
 
 // One line per run: status, dumps, cost, check, stash, reason.

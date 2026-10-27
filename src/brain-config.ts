@@ -1,5 +1,5 @@
 import fs from "node:fs"
-import type { Engine } from "./engine"
+import { isProvider, type Engine } from "./engine"
 
 type Config = {
   brainFolder?: unknown
@@ -30,7 +30,7 @@ export function writeTelegramChat(configPath: string, chat: number): void {
 // Null until the Owner picks one in setup.
 export function readEngineChoice(configPath: string): EngineChoice | null {
   const { engine } = readConfig(configPath)
-  return engine === "free" || engine === "openai" ? engine : null
+  return engine === "free" || isProvider(engine) ? engine : null
 }
 
 export function writeEngineChoice(configPath: string, engine: EngineChoice): void {
