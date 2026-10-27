@@ -5,6 +5,7 @@ import path from "node:path"
 import test from "node:test"
 import { exec } from "dugite"
 import { createSecondBrain } from "../src/create-second-brain"
+import { freeEngine, freeModels } from "../src/engine"
 import { ingestNow, lastIngestStatus, type AgentRunner } from "../src/ingest-now"
 
 process.env.TZ = "Asia/Dhaka"
@@ -175,5 +176,80 @@ test("a missing key stops the run before any chunk, notifies, and counts nothing
   assert.deepEqual(notices, ["Ingest stopped: the OpenAI API key is missing."])
   assert.equal(fs.readFileSync(path.join(brain, ".state", "runs.tsv"), "utf8").split("\n").at(-2)?.split("\t")[1], "failed")
   assert.equal(fails(brain, "2026-10-09-103000-mac"), undefined)
+  assert.equal(fs.existsSync(path.join(brain, "inbox", dump)), true)
+})
+
+const limited = '{"type":"error","error":{"name":"APIError","data":{"statusCode":429,"responseBody":"FreeUsageLimitError"}}}'
+
+test("on the Free Engine, a 429 on the default model stashes its edits and refiles the chunk on the fallback", async () => {
+  const dump = "2026-10-09-110000-mac.md"
+  const brain = await brainWith([dump, "free"])
+  const models: string[] = []
+  const result = await ingestNow({
+    brain,
+    engine: freeEngine,
+    today,
+    now,
+    runner: async (run) => {
+      models.push(run.args[2])
+      if (run.args[2] === freeModels[0]) {
+        partial(brain)
+        return { code: 1, stdout: limited }
+      }
+      return good(brain)(run)
+    },
+  })
+
+  assert.equal(result.status, "ok")
+  assert.deepEqual(models, [...freeModels])
+  assert.equal(fs.existsSync(path.join(brain, "vault", "raw", "2026", "10", dump)), true)
+  assert.equal(fs.existsSync(path.join(brain, "vault", "wiki", "partial.md")), false)
+  assert.match(await git(brain, "stash", "show", "-u", "--name-only", "stash@{0}"), /vault\/wiki\/partial\.md/)
+})
+
+test("when both free models are limited, the Dumps stay in inbox, nothing counts against them, and the notice offers a key", async () => {
+  const dump = "2026-10-09-120000-mac.md"
+  const brain = await brainWith([dump, "free"])
+  const models: string[] = []
+  const notices: [string, string | undefined][] = []
+  const result = await ingestNow({
+    brain,
+    engine: freeEngine,
+    today,
+    now,
+    notify: (text, offer) => notices.push([text, offer]),
+    runner: async (run) => {
+      models.push(run.args[2])
+      return { code: 1, stdout: limited }
+    },
+  })
+
+  assert.equal(result.status, "failed")
+  assert.equal(result.reason, "the free models are unavailable")
+  assert.deepEqual(models, [...freeModels])
+  assert.equal(fs.existsSync(path.join(brain, "inbox", dump)), true)
+  assert.equal(fails(brain, "2026-10-09-120000-mac"), undefined)
+  assert.deepEqual(notices, [
+    ["Ingest failed: the free models are unavailable. 1 Dumps stay in inbox/. Add a key to keep filing.", "add-key"],
+  ])
+})
+
+test("when the fallback fails for any reason after a 429, the notice still offers a key and nothing counts", async () => {
+  const dump = "2026-10-09-130000-mac.md"
+  const brain = await brainWith([dump, "free"])
+  const offers: (string | undefined)[] = []
+  const result = await ingestNow({
+    brain,
+    engine: freeEngine,
+    today,
+    now,
+    notify: (_text, offer) => offers.push(offer),
+    runner: async (run) => ({ code: run.args[2] === freeModels[0] ? 1 : 3, stdout: run.args[2] === freeModels[0] ? limited : "" }),
+  })
+
+  assert.equal(result.status, "failed")
+  assert.equal(result.reason, "the free models are unavailable")
+  assert.deepEqual(offers, ["add-key"])
+  assert.equal(fails(brain, "2026-10-09-130000-mac"), undefined)
   assert.equal(fs.existsSync(path.join(brain, "inbox", dump)), true)
 })

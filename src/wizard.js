@@ -1,4 +1,5 @@
 const folderStep = document.getElementById("folder-step")
+const engineStep = document.getElementById("engine-step")
 const keyStep = document.getElementById("key-step")
 const botStep = document.getElementById("bot-step")
 const input = document.getElementById("folder")
@@ -17,6 +18,7 @@ const saveRemote = document.getElementById("save-remote")
 
 function show(step) {
   folderStep.hidden = step !== "folder"
+  engineStep.hidden = step !== "engine"
   keyStep.hidden = step !== "key"
   botStep.hidden = step !== "bot"
   remoteStep.hidden = step !== "remote"
@@ -66,7 +68,17 @@ document.getElementById("folder-form").addEventListener("submit", async (event) 
     create.disabled = false
     return
   }
-  show("key")
+  show("engine")
+})
+
+document.getElementById("engine-form").addEventListener("submit", async (event) => {
+  event.preventDefault()
+  if (new FormData(event.target).get("engine") === "key") {
+    show("key")
+    return
+  }
+  await window.wizard.startFree()
+  show("bot")
 })
 
 document.getElementById("key-form").addEventListener("submit", async (event) => {

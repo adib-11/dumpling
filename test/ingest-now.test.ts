@@ -6,6 +6,7 @@ import path from "node:path"
 import test from "node:test"
 import { exec } from "dugite"
 import { createSecondBrain } from "../src/create-second-brain"
+import { freeEngine, freeModels } from "../src/engine"
 import { ingestNow, spawnOpencode, type AgentRun } from "../src/ingest-now"
 
 const templates = path.join(__dirname, "..", "templates")
@@ -102,6 +103,37 @@ test("ingest now files a Dump, commits, logs the cost, and keeps the key out of 
     "when\tstatus\tdumps\tcost\tcheck\tstash\treason\n2026-10-23T12:00:00.000Z\tok\t1\t0.0300\tok\t\t\n",
   )
   assert.equal(contains(brain, key), false)
+})
+
+test("with Start free and no key, Ingest files a text Dump and a link Dump on the default free model", async () => {
+  const brain = await brainWith("2026-10-08-091000-mac.md", "---\nkind: text\n---\nCafe thought\n")
+  fs.writeFileSync(
+    path.join(brain, "inbox", "2026-10-08-092000-mac.md"),
+    "---\nkind: link\nurl: https://example.com/a\n---\nhttps://example.com/a\n",
+  )
+  fs.writeFileSync(path.join(brain, "inbox", "2026-10-08-092000-mac.fetched.md"), "---\nstatus: fetched\n---\nArticle\n")
+  const calls: AgentRun[] = []
+  const result = await ingestNow({
+    brain,
+    engine: freeEngine,
+    today,
+    now,
+    runner: async (run) => {
+      calls.push(run)
+      for (const stem of (run.args.at(-1) ?? "").matchAll(/inbox\/(\S+)\.md/g)) {
+        fs.appendFileSync(path.join(brain, "vault", "wiki", "log.md"), `- Raw: [[${stem[1]}]]\n`)
+      }
+      fs.appendFileSync(path.join(brain, "vault", "wiki", "topics.md"), "filed\n")
+      return { code: 0, stdout: '{"type":"step_finish","part":{"cost":0}}\n' }
+    },
+  })
+
+  assert.equal(result.status, "ok")
+  assert.equal(result.dumps, 2)
+  assert.equal(calls.length, 1)
+  assert.deepEqual(calls[0].args.slice(0, -1), ["run", "-m", freeModels[0], "--agent", "ingest", "--format", "json"])
+  assert.equal(calls[0].env.OPENAI_API_KEY, process.env.OPENAI_API_KEY)
+  assert.equal(fs.existsSync(path.join(brain, "vault", "raw", "2026", "10", "2026-10-08-092000-mac.fetched.md")), true)
 })
 
 test("a chunk that fails check-ingest gets one fix pass and is then filed", async () => {
