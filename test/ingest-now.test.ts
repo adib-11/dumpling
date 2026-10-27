@@ -309,26 +309,27 @@ test("a quote of the key is not passed as an opencode argument", async () => {
   assert.equal(prompts[1].includes("[redacted]"), true)
 })
 
-test("the opencode process arguments do not include the key", async () => {
+test("the opencode process arguments do not include the key, and it runs in the brain whatever PWD says", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-argv-"))
   const script = path.join(dir, "fake-opencode.js")
   const out = path.join(dir, "out.json")
   fs.writeFileSync(
     script,
     `const fs = require("node:fs")
-fs.writeFileSync(process.argv[2], JSON.stringify({ argv: process.argv, env: process.env.OPENAI_API_KEY }))
+fs.writeFileSync(process.argv[2], JSON.stringify({ argv: process.argv, env: process.env.OPENAI_API_KEY, pwd: process.env.PWD }))
 `,
   )
   const run: AgentRun = {
     args: [script, out, "run", "-m", "openai/gpt-5.6-luna", "--agent", "ingest", "--format", "json", "File these Dumps"],
-    env: { ...process.env, OPENAI_API_KEY: key },
+    env: { ...process.env, OPENAI_API_KEY: key, PWD: "/somewhere/the/app/was/launched" },
     cwd: dir,
     signal: new AbortController().signal,
   }
   const result = await spawnOpencode(process.execPath, run, spawn)
   assert.equal(result.code, 0)
-  const recorded = JSON.parse(fs.readFileSync(out, "utf8")) as { argv: string[]; env: string }
+  const recorded = JSON.parse(fs.readFileSync(out, "utf8")) as { argv: string[]; env: string; pwd: string }
   assert.equal(recorded.env, key)
+  assert.equal(recorded.pwd, dir)
   assert.equal(recorded.argv.some((arg: string) => arg.includes(key)), false)
 })
 

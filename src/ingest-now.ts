@@ -49,7 +49,8 @@ export async function spawnOpencode(
   return new Promise((resolve, reject) => {
     const child = spawnImpl(bin, run.args, {
       cwd: run.cwd,
-      env: run.env,
+      // opencode takes its project from PWD before cwd, and PWD is whatever launched the app.
+      env: { ...run.env, PWD: run.cwd },
       signal: run.signal,
       shell: false,
       windowsHide: true,
