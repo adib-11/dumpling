@@ -155,5 +155,5 @@ test("every Key Engine has a default model and a cost table, and only a provider
     offeredProviders().map((provider) => provider.id),
     Object.entries(keyProviders).filter(([, provider]) => provider.fixtures !== null).map(([id]) => id),
   )
-  assert.equal(offeredProviders().some((provider) => provider.id === "openai"), true)
+  assert.deepEqual(offeredProviders().map((provider) => provider.id).slice(0, 2), ["openai", "gemini"])
 })

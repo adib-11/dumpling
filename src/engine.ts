@@ -46,7 +46,8 @@ export const keyProviders: Record<Provider, KeyProvider> = {
     env: "GOOGLE_GENERATIVE_AI_API_KEY",
     keysUrl: "https://aistudio.google.com/apikey",
     prices: { input: 0.3, output: 2.5, cacheRead: 0.03, cacheWrite: 0 },
-    fixtures: null,
+    // 2026-10-27: 13 Dumps filed in 1.5 min for $0.10; the miss was a Bangla quote without an English gloss.
+    fixtures: "57/58",
     audio: true,
   },
   anthropic: {
