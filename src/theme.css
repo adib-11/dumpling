@@ -116,6 +116,11 @@ textarea {
   resize: vertical;
 }
 
+::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
 input[type="radio"],
 input[type="checkbox"] {
   accent-color: var(--accent);

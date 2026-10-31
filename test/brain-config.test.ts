@@ -5,10 +5,12 @@ import path from "node:path"
 import test from "node:test"
 import {
   readBrainFolder,
+  readCaptureShortcut,
   readEngineChoice,
   readOpenAtLogin,
   readTelegramChat,
   writeBrainFolder,
+  writeCaptureShortcut,
   writeEngineChoice,
   writeOpenAtLogin,
   writeTelegramChat,
@@ -68,4 +70,17 @@ test("open at login is on until the Owner turns it off", () => {
   assert.equal(readBrainFolder(configPath), "/home/ada/Documents/Dumpling")
   writeOpenAtLogin(configPath, true)
   assert.equal(readOpenAtLogin(configPath), true)
+})
+
+test("the capture shortcut is the default until the Owner changes it, and a bad stored one is ignored", () => {
+  const configPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "brain-config-")), "config.json")
+  writeBrainFolder(configPath, "/home/ada/Documents/Dumpling")
+  assert.equal(readCaptureShortcut(configPath), "Control+Alt+Space")
+
+  writeCaptureShortcut(configPath, "Control+Alt+K")
+
+  assert.equal(readCaptureShortcut(configPath), "Control+Alt+K")
+  assert.equal(readBrainFolder(configPath), "/home/ada/Documents/Dumpling")
+  fs.writeFileSync(configPath, JSON.stringify({ captureShortcut: "K" }))
+  assert.equal(readCaptureShortcut(configPath), "Control+Alt+Space")
 })

@@ -1,5 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent, type KeyboardEvent } from "react"
 import { BotForm } from "./BotForm"
+import { acceleratorFromKey } from "../src/shortcut"
 import { EngineForm } from "./EngineForm"
 
 type Props = { botConnected: boolean; onBotConnected: () => void }
@@ -18,6 +19,7 @@ export function Settings({ botConnected, onBotConnected }: Props) {
       <Bot connected={botConnected} onConnected={onBotConnected} />
       <Folder />
       <BackupRemote />
+      <CaptureShortcut />
       <OpenAtLogin />
     </>
   )
@@ -104,6 +106,62 @@ function Folder() {
           </button>
         </div>
       </form>
+    </section>
+  )
+}
+
+// The shortcut that opens the capture box. Press the new keys in the field; a shortcut the system refuses is
+// said so here, and the old one keeps working.
+function CaptureShortcut() {
+  const [shortcut, setShortcut] = useState<{ label: string; registered: boolean; platform: string } | null>(null)
+  const [error, setError] = useState("")
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    void window.dumpling.captureShortcut().then(setShortcut)
+  }, [])
+
+  async function press(event: KeyboardEvent) {
+    // Tab and Shift+Tab still move on; every other key is the shortcut being typed.
+    if (event.key === "Tab" && !event.ctrlKey && !event.altKey && !event.metaKey) return
+    event.preventDefault()
+    if (!shortcut) return
+    const accelerator = acceleratorFromKey(event, shortcut.platform)
+    if (!accelerator) return
+    setError("")
+    setSaved(false)
+    const result = await window.dumpling.setCaptureShortcut(accelerator)
+    if (!result.ok) setError(result.error)
+    else setSaved(true)
+    setShortcut(await window.dumpling.captureShortcut())
+  }
+
+  return (
+    <section aria-labelledby="settings-capture">
+      <h2 id="settings-capture">Quick capture</h2>
+      <p>
+        This shortcut opens a small box from any app. Type a thought, paste a link, or paste or drop an image, then
+        press Enter.
+      </p>
+      <label htmlFor="settings-shortcut">Shortcut</label>
+      <div className="row">
+        <input
+          id="settings-shortcut"
+          type="text"
+          readOnly
+          spellCheck={false}
+          value={shortcut?.label ?? ""}
+          onKeyDown={(event) => void press(event)}
+        />
+      </div>
+      <p>Click the field and press the keys you want, with Ctrl, Alt or Cmd in them.</p>
+      {shortcut && !shortcut.registered && (
+        <p role="alert">
+          The system did not give Dumpling {shortcut.label}, so quick capture is off. Choose another shortcut.
+        </p>
+      )}
+      <p role="alert">{error}</p>
+      {saved && <p role="status">Saved. Quick capture opens with {shortcut?.label}.</p>}
     </section>
   )
 }

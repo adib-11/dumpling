@@ -38,6 +38,10 @@ const dumpling: DumplingApi = {
   editDump: (name, text) => ipcRenderer.invoke("window:edit-dump", name, text),
   deleteDump: (name) => ipcRenderer.invoke("window:delete-dump", name),
   retryIngest: () => ipcRenderer.invoke("window:retry-ingest"),
+  capture: (text, image) => ipcRenderer.invoke("capture:save", text, image),
+  closeCapture: () => ipcRenderer.invoke("capture:close"),
+  captureShortcut: () => ipcRenderer.invoke("window:capture-shortcut"),
+  setCaptureShortcut: (accelerator) => ipcRenderer.invoke("window:set-capture-shortcut", accelerator),
   onChange: (listener) => {
     const forward = () => listener()
     ipcRenderer.on("window:changed", forward)

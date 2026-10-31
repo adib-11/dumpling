@@ -266,3 +266,26 @@ button.page-link {
 .inbox form .actions {
   justify-content: flex-end;
 }
+
+/* Quick capture: a frameless box, so the page itself carries the theme's background and border. */
+
+main.capture {
+  max-width: none;
+  padding: var(--space-3) var(--space-4);
+}
+
+.capture textarea {
+  height: 84px;
+  min-height: 0;
+  resize: none;
+}
+
+.capture .capture-image,
+.capture .capture-hint {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+}
+
+.capture .capture-hint {
+  color: var(--text-muted);
+}

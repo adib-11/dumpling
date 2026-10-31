@@ -2,6 +2,7 @@ import {
   app,
   BrowserWindow,
   dialog,
+  globalShortcut,
   ipcMain,
   Menu,
   nativeImage,
@@ -18,10 +19,12 @@ import { acceptApiKey, keyFileName, loadApiKey } from "./api-key"
 import { askQuestion, type AskResult } from "./ask"
 import {
   readBrainFolder,
+  readCaptureShortcut,
   readEngineChoice,
   readOpenAtLogin,
   readTelegramChat,
   writeBrainFolder,
+  writeCaptureShortcut,
   writeEngineChoice,
   writeOpenAtLogin,
   writeTelegramChat,
@@ -37,8 +40,10 @@ import { disableLinuxAutostart, enableLinuxAutostart } from "./login-item"
 import { windowState, type Tab, type WindowState } from "./main-window"
 import { obsidianUrl } from "./obsidian"
 import { listPages, readPage, searchPages } from "./pages"
+import { quickCapture } from "./quick-capture"
 import { problemReportUrl, systemName } from "./report-problem"
 import { claimDailyIngest, readDrain, rememberDrain } from "./schedule"
+import { createCaptureShortcut } from "./shortcut"
 import { isSecretName, moveSettings, oldAppName } from "./settings-move"
 import { connectBot, ingestBot, telegramBot } from "./telegram"
 import { readToday } from "./today"
@@ -47,6 +52,7 @@ import { newerRelease, type NewRelease } from "./update-check"
 
 let tray: Tray | null = null
 let mainWindow: BrowserWindow | null = null
+let captureWindow: BrowserWindow | null = null
 // The /start wait, and the id of the bot it reads. That bot's poll waits until it is done.
 let connecting: { abort: AbortController; bot: string | null } | null = null
 // A token checked with getMe, kept here until /start connects it, so the bot in use stays until then.
@@ -211,6 +217,12 @@ function currentEngine(): Engine | null {
   return key ? keyEngine(provider, key) : null
 }
 
+// Reads photos and voice notes with the current Engine, or undefined before one is set up.
+function currentMedia(): ReturnType<typeof engineMedia> | undefined {
+  const engine = currentEngine()
+  return engine ? engineMedia(engine, (run) => spawnOpencode(opencodeBin(), run)) : undefined
+}
+
 function redact(text: string, secret: string): string {
   return secret === "" ? text : text.split(secret).join("[redacted]")
 }
@@ -257,8 +269,7 @@ function startPolling(): void {
     {
       // Read on each drain, so a key added later transcribes the next voice note.
       get media() {
-        const engine = currentEngine()
-        return engine ? engineMedia(engine, (run) => spawnOpencode(opencodeBin(), run)) : undefined
+        return currentMedia()
       },
       onUnsaved(notice) {
         if (notice === unsaved) return
@@ -429,6 +440,63 @@ function openMainWindow(tab: Tab | null = null): void {
     pendingTab = null
     updateDock()
   })
+}
+
+// The global shortcut opens this small box from any app (spec v0.2 §6). Before a folder is chosen it opens the
+// main window instead, which asks for one.
+function openCapture(): void {
+  if (!readBrainFolder(configPath())) {
+    openMainWindow()
+    return
+  }
+  if (captureWindow) {
+    captureWindow.show()
+    captureWindow.focus()
+    return
+  }
+  const box = new BrowserWindow({
+    width: 480,
+    height: 220,
+    show: false,
+    frame: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    title: "Dumpling capture",
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  })
+  captureWindow = box
+  box.webContents.setWindowOpenHandler(() => ({ action: "deny" }))
+  box.webContents.on("will-navigate", (event) => event.preventDefault())
+  box.once("ready-to-show", () => {
+    if (process.platform === "darwin") app.focus({ steal: true })
+    box.show()
+    box.focus()
+  })
+  box.on("closed", () => {
+    captureWindow = null
+  })
+  void box.loadFile(path.join(__dirname, "renderer", "index.html"), { hash: "capture" })
+}
+
+const captureShortcut = createCaptureShortcut(globalShortcut, process.platform, openCapture)
+
+// The bytes the Owner pasted or dropped as a JPEG, whatever format they were in (a pasted screenshot is a PNG, which
+// quickCapture's baseline-JPEG decoder cannot read). Resized here first so a huge screenshot is never decoded whole;
+// quickCapture then sizes it to 1200 px as it does a Telegram photo.
+function imageToJpeg(bytes: Uint8Array): Buffer | null {
+  let image = nativeImage.createFromBuffer(Buffer.from(bytes))
+  if (image.isEmpty()) return null
+  if (image.getSize().width > 1200) image = image.resize({ width: 1200, quality: "good" })
+  return image.toJPEG(85)
 }
 
 // Before first run is done the window shows first run instead.
@@ -609,6 +677,8 @@ function start(): void {
     // The tray keeps the process alive.
   })
 
+  app.on("will-quit", () => globalShortcut.unregisterAll())
+
   app.on("before-quit", () => {
     tray?.destroy()
     tray = null
@@ -654,6 +724,39 @@ function start(): void {
     } catch (error) {
       return { ok: false as const, error: hideCredentials(errorMessage(error, "Could not set the remote.")) }
     }
+  })
+
+  ipcMain.handle("capture:save", async (_event, text: unknown, image: unknown) => {
+    const folder = readBrainFolder(configPath())
+    if (!folder) return { ok: false as const, error: "Choose a folder first." }
+    if (typeof text !== "string") return { ok: false as const, error: "Type something or paste an image." }
+    let jpeg: Buffer | undefined
+    if (image !== null && image !== undefined) {
+      if (!(image instanceof Uint8Array) || image.byteLength > maxImageBytes) {
+        return { ok: false as const, error: "That image is too large or not an image." }
+      }
+      jpeg = imageToJpeg(image) ?? undefined
+      if (!jpeg) return { ok: false as const, error: "Could not read that image. Use a JPEG or PNG." }
+    }
+    const result = await quickCapture(folder, { text, image: jpeg }, { media: currentMedia() })
+    if (result.ok) {
+      broadcastChange()
+      captureWindow?.close()
+    }
+    return result
+  })
+
+  ipcMain.handle("capture:close", () => {
+    captureWindow?.close()
+  })
+
+  ipcMain.handle("window:capture-shortcut", () => ({ ...captureShortcut.status(), platform: process.platform }))
+
+  ipcMain.handle("window:set-capture-shortcut", (_event, accelerator: unknown) => {
+    if (typeof accelerator !== "string") return { ok: false as const, error: "Press a shortcut." }
+    const result = captureShortcut.change(accelerator)
+    if (result.ok) writeCaptureShortcut(configPath(), accelerator)
+    return result
   })
 
   ipcMain.handle("pages:list", () => {
@@ -864,6 +967,7 @@ function start(): void {
     }
     if (process.platform === "darwin") app.dock?.hide()
     createTray()
+    captureShortcut.start(readCaptureShortcut(configPath()))
     startPolling()
     if (!firstRunDone()) openMainWindow()
     powerMonitor.on("resume", () => {
@@ -882,6 +986,10 @@ function start(): void {
     setInterval(() => void checkForUpdate(), 24 * 3600 * 1000)
   })
 }
+
+// A pasted or dropped image over this is refused before it is decoded. The capture box refuses the same size
+// (renderer/Capture.tsx), so it can say so without a round trip.
+const maxImageBytes = 20 * 1024 * 1024
 
 const oldSecrets = process.argv.find((arg) => arg.startsWith(readOldFlag))
 if (oldSecrets !== undefined) printOldSecrets(oldSecrets.slice(readOldFlag.length).split(","))
