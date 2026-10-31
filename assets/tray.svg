@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 16" width="22" height="16">
+  <title>Dumpling menu bar icon</title>
+  <g transform="translate(-5.17 -8.68) scale(0.0258)" fill="#000">
+    <path fill="none" stroke="#000" stroke-width="58" stroke-linejoin="round" d="M 622 381 C 670 381 700 400 722 425 C 732 437 742 444 760 448 C 805 460 842 484 862 514 C 935 548 985 625 985 720 C 985 835 840 912 626 912 C 412 912 268 835 268 720 C 268 625 318 548 390 514 C 410 484 445 461 495 448 C 512 444 522 437 532 425 C 552 400 575 381 622 381 Z"/>
+    <path fill="none" stroke="#000" stroke-width="44" stroke-linecap="round" d="M 627 482 L 627 560 M 572 478 L 500 550 M 682 478 L 754 550"/>
+    <circle cx="505" cy="700" r="46"/>
+    <circle cx="748" cy="700" r="46"/>
+    <path d="M 582 704 C 582 684 610 682 612 702 C 614 712 620 716 627 716 C 634 716 640 712 642 702 C 644 682 672 684 672 704 C 670 732 650 750 627 750 C 604 750 584 732 582 704 Z"/>
+  </g>
+</svg>

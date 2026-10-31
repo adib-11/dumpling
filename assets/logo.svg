@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="220 226 820 820" width="820" height="820">
+  <title>Dumpling</title>
+  <defs>
+    <path id="body" d="M 622 381 C 670 381 700 400 722 425 C 732 437 742 444 760 448 C 805 460 842 484 862 514 C 935 548 985 625 985 720 C 985 835 840 912 626 912 C 412 912 268 835 268 720 C 268 625 318 548 390 514 C 410 484 445 461 495 448 C 512 444 522 437 532 425 C 552 400 575 381 622 381 Z"/>
+    <path id="pleat" d="M 586 453 C 546 470 486 498 462 538 C 448 563 460 586 484 576 C 524 556 566 498 586 453 Z"/>
+    <clipPath id="inside"><use xlink:href="#body"/></clipPath>
+  </defs>
+  <use xlink:href="#body" fill="none" stroke="#FFFDF3" stroke-width="78" stroke-linejoin="round"/>
+  <ellipse cx="627" cy="902" rx="326" ry="56" fill="#FAC88E"/>
+  <use xlink:href="#body" fill="#FDF5DE"/>
+  <path clip-path="url(#inside)" fill="#FBDDB3" d="M 905 555 C 942 612 948 722 902 792 C 852 862 700 892 520 897 L 640 960 L 1010 960 L 1010 555 Z"/>
+  <use xlink:href="#body" fill="none" stroke="#C4653F" stroke-width="32" stroke-linejoin="round"/>
+  <g fill="#F8C595" stroke="#F8C595" stroke-width="10" stroke-linejoin="round">
+    <use xlink:href="#pleat"/>
+    <use xlink:href="#pleat" transform="matrix(-1 0 0 1 1254 0)"/>
+    <path d="M 627 461 C 638 474 640 512 652 545 C 666 584 652 606 626 606 C 600 606 586 584 600 545 C 612 512 616 474 627 461 Z"/>
+  </g>
+  <g fill="#F9AE8E">
+    <ellipse cx="425" cy="733" rx="48" ry="37"/>
+    <ellipse cx="829" cy="733" rx="48" ry="37"/>
+  </g>
+  <g fill="#6B3222">
+    <circle cx="512" cy="693" r="32"/>
+    <circle cx="741" cy="693" r="32"/>
+  </g>
+  <path fill="#6B3222" d="M 582 704 C 582 690 602 688 604 702 C 607 712 615 718 627 718 C 639 718 647 712 650 702 C 652 688 672 690 672 704 C 670 728 650 744 627 744 C 604 744 584 728 582 704 Z"/>
+  <g stroke-linecap="round">
+    <g stroke="#FFFDF3" stroke-width="70">
+      <line x1="893" y1="362" x2="879" y2="418"/>
+      <line x1="986" y1="414" x2="936" y2="461"/>
+    </g>
+    <g stroke="#F39069">
+      <line x1="893" y1="362" x2="879" y2="418" stroke-width="32"/>
+      <line x1="986" y1="414" x2="936" y2="461" stroke-width="34"/>
+    </g>
+  </g>
+</svg>

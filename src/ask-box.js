@@ -2,17 +2,18 @@ const form = document.getElementById("ask-form")
 const question = document.getElementById("question")
 const error = document.getElementById("error")
 const answer = document.getElementById("answer")
-const ask = document.getElementById("ask-button")
+// Not named ask: the preload already defines window.ask, and a script-level const of that name throws.
+const askButton = document.getElementById("ask-button")
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault()
   error.textContent = ""
   answer.textContent = ""
-  ask.disabled = true
-  ask.textContent = "Asking…"
+  askButton.disabled = true
+  askButton.textContent = "Asking…"
   const result = await window.ask.question(question.value)
-  ask.disabled = false
-  ask.textContent = "Ask"
+  askButton.disabled = false
+  askButton.textContent = "Ask"
   if (!result.ok) {
     error.textContent = result.error
     return

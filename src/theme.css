@@ -1,0 +1,162 @@
+/* Dumpling's colour and type tokens, shared by every window. The colours come from the logo. Each text colour
+   meets 4.5:1 on --bg and --surface, and borders and the focus ring 3:1, in both schemes (test/theme.test.ts). */
+
+:root {
+  color-scheme: light dark;
+
+  --bg: #fff9ec;
+  --surface: #ffffff;
+  --text: #2e1c14;
+  --text-muted: #6b5144;
+  --accent: #a9502e;
+  --accent-text: #9a4526;
+  --on-accent: #ffffff;
+  --danger: #b3261e;
+  --border: #ead9c6;
+  --border-strong: #9c8576;
+  --focus: #a9502e;
+
+  --font: system-ui, -apple-system, "Segoe UI", Ubuntu, Cantarell, "Noto Sans", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.25rem;
+  --weight-strong: 600;
+  --weight-heading: 650;
+  --leading: 1.5;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius: 8px;
+  --radius-control: 6px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1511;
+    --surface: #29201a;
+    --text: #f8eee5;
+    --text-muted: #c7b3a4;
+    --accent: #f39069;
+    --accent-text: #f6a383;
+    --on-accent: #2e1c14;
+    --danger: #ff8f84;
+    --border: #45372e;
+    --border-strong: #8c7567;
+    --focus: #f39069;
+  }
+}
+
+/* The base every window shares: page colours, type, form controls and the focus ring. */
+
+html {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--text-base);
+  line-height: var(--leading);
+}
+
+body {
+  margin: 0;
+}
+
+h1 {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-heading);
+  margin: 0 0 var(--space-3);
+}
+
+h2 {
+  font-size: var(--text-base);
+  font-weight: var(--weight-heading);
+  margin: 0 0 var(--space-2);
+}
+
+p {
+  margin: 0 0 var(--space-4);
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+a {
+  color: var(--accent-text);
+}
+
+label {
+  display: block;
+  font-weight: var(--weight-strong);
+  margin-bottom: var(--space-1);
+}
+
+input[type="text"],
+input[type="password"],
+textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  padding: 6px var(--space-2);
+}
+
+input[type="radio"] {
+  accent-color: var(--accent);
+}
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  padding: 6px var(--space-3);
+  cursor: pointer;
+}
+
+button[type="submit"] {
+  color: var(--on-accent);
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: var(--weight-strong);
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+[role="alert"] {
+  color: var(--danger);
+  min-height: 1.5em;
+  margin: var(--space-3) 0 0;
+}
+
+[role="alert"]:empty {
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

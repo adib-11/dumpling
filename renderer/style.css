@@ -1,74 +1,42 @@
-:root {
-  color-scheme: light dark;
-  font-family: system-ui, sans-serif;
-  line-height: 1.4;
-}
-
-body {
-  margin: 0;
-}
+/* The main window. Colours, type and the shared base come from src/theme.css. */
 
 main {
-  padding: 24px;
+  padding: var(--space-6);
   max-width: 640px;
 }
 
-h1 {
-  font-size: 1.15rem;
-  font-weight: 650;
-  margin: 0 0 12px;
+.first-run {
+  margin: 0 auto;
+  padding-top: var(--space-8);
 }
 
-h2 {
-  font-size: 1rem;
-  font-weight: 650;
-  margin: 0 0 8px;
-}
-
-p {
-  margin: 0 0 16px;
-}
-
-label {
+.first-run .logo {
   display: block;
-  font-weight: 600;
-  margin-bottom: 6px;
+  width: 72px;
+  height: 72px;
+  margin-bottom: var(--space-4);
 }
 
 .row {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
-input[type="text"],
-input[type="password"] {
+.row input {
   flex: 1;
-  font: inherit;
-  padding: 6px 8px;
-}
-
-button {
-  font: inherit;
-  padding: 6px 12px;
-}
-
-.actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
 }
 
 fieldset {
   border: 0;
-  margin: 0 0 12px;
+  margin: 0 0 var(--space-3);
   padding: 0;
 }
 
 .choice {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: baseline;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
 .choice input {
@@ -76,50 +44,65 @@ fieldset {
 }
 
 .choice-note {
-  margin-left: 24px;
+  margin-left: var(--space-6);
+  color: var(--text-muted);
 }
 
-[role="alert"] {
-  color: #9f2d1e;
-  min-height: 1.4em;
-  margin: 12px 0 0;
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4) 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
 
-[role="alert"]:empty {
-  margin: 0;
+.bar .logo {
+  width: 28px;
+  height: 28px;
+  margin-bottom: var(--space-1);
 }
 
 [role="tablist"] {
   display: flex;
-  gap: 4px;
-  padding: 8px 16px 0;
-  border-bottom: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  gap: var(--space-1);
 }
 
 [role="tab"] {
   border: 0;
   border-bottom: 2px solid transparent;
+  border-radius: var(--radius-control) var(--radius-control) 0 0;
   background: none;
-  color: inherit;
-  padding: 8px 12px;
+  color: var(--text-muted);
+  padding: var(--space-2) var(--space-3);
 }
 
 [role="tab"][aria-selected="true"] {
-  border-bottom-color: currentColor;
-  font-weight: 650;
+  border-bottom-color: var(--accent);
+  color: var(--accent-text);
+  font-weight: var(--weight-heading);
+}
+
+[role="tab"]:focus-visible {
+  outline-offset: -2px;
+}
+
+[role="tabpanel"] {
+  border-radius: var(--radius);
 }
 
 section + section {
-  margin-top: 32px;
+  margin-top: var(--space-8);
 }
 
 .card {
-  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+  margin-bottom: var(--space-6);
 }
 
 .empty {
-  opacity: 0.7;
+  color: var(--text-muted);
 }

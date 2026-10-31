@@ -1,4 +1,5 @@
 import { useRef, type KeyboardEvent, type ReactNode } from "react"
+import logo from "../assets/logo.svg"
 import { tabs, type Tab } from "../src/main-window"
 import { ConnectPhone } from "./ConnectPhone"
 import { Settings } from "./Settings"
@@ -42,30 +43,43 @@ export function Tabs({ tab, onTab, connectPhone, onConnected }: Props) {
 
   return (
     <>
-      <nav role="tablist" aria-label="Dumpling" onKeyDown={move}>
+      <header className="bar">
+        <img className="logo" src={logo} alt="" />
+        <nav role="tablist" aria-label="Dumpling" onKeyDown={move}>
+          {tabs.map((each) => (
+            <button
+              key={each}
+              ref={(button) => {
+                buttons.current[each] = button
+              }}
+              role="tab"
+              id={`tab-${each}`}
+              aria-selected={tab === each}
+              aria-controls={`panel-${each}`}
+              tabIndex={tab === each ? 0 : -1}
+              onClick={() => onTab(each)}
+            >
+              {labels[each]}
+            </button>
+          ))}
+        </nav>
+      </header>
+      <main>
         {tabs.map((each) => (
-          <button
+          // A panel takes focus itself, since Inbox, Pages and Ask have nothing focusable in them yet.
+          <section
             key={each}
-            ref={(button) => {
-              buttons.current[each] = button
-            }}
-            role="tab"
-            id={`tab-${each}`}
-            aria-selected={tab === each}
-            aria-controls={`panel-${each}`}
-            tabIndex={tab === each ? 0 : -1}
-            onClick={() => onTab(each)}
+            role="tabpanel"
+            id={`panel-${each}`}
+            aria-labelledby={`tab-${each}`}
+            tabIndex={0}
+            hidden={tab !== each}
           >
-            {labels[each]}
-          </button>
+            <h1>{labels[each]}</h1>
+            {panels[each]}
+          </section>
         ))}
-      </nav>
-      {tabs.map((each) => (
-        <main key={each} role="tabpanel" id={`panel-${each}`} aria-labelledby={`tab-${each}`} hidden={tab !== each}>
-          <h1>{labels[each]}</h1>
-          {panels[each]}
-        </main>
-      ))}
+      </main>
     </>
   )
 }
