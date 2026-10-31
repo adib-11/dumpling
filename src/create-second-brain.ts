@@ -79,6 +79,21 @@ export async function createSecondBrain(folder: string, templatesDir: string): P
   }
 }
 
+// Settings changes the folder to a second brain the Owner already has, or makes a new one in an empty folder.
+export async function openSecondBrain(folder: string, templatesDir: string): Promise<{ created: boolean }> {
+  if (!path.isAbsolute(folder)) throw new Error(`Choose a full folder path, not ${folder}`)
+  if (isSecondBrain(folder)) return { created: false }
+  if (fs.existsSync(folder) && fs.readdirSync(folder).length > 0) {
+    throw new Error("That folder has other files in it. Choose a second brain folder or an empty one.")
+  }
+  await createSecondBrain(folder, templatesDir)
+  return { created: true }
+}
+
+function isSecondBrain(folder: string): boolean {
+  return fs.existsSync(path.join(folder, ".git")) && fs.existsSync(path.join(folder, "vault", "wiki", "index.md"))
+}
+
 function rollback(folder: string, existed: boolean): void {
   if (!existed) {
     fs.rmSync(folder, { recursive: true, force: true })

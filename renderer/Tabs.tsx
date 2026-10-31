@@ -1,5 +1,6 @@
 import { useRef, type KeyboardEvent, type ReactNode } from "react"
 import { tabs, type Tab } from "../src/main-window"
+import { Ask } from "./Ask"
 import { ConnectPhone } from "./ConnectPhone"
 import { Settings } from "./Settings"
 
@@ -11,10 +12,17 @@ const labels: Record<Tab, string> = {
   settings: "Settings",
 }
 
-type Props = { tab: Tab; onTab: (tab: Tab) => void; connectPhone: boolean; onConnected: () => void }
+type Props = {
+  tab: Tab
+  onTab: (tab: Tab) => void
+  connectPhone: boolean
+  onConnected: () => void
+  // Goes up each time the menu's Ask… opens the Ask tab.
+  askRequest: number
+}
 
 // The five tabs (spec §5). Panels stay mounted while hidden, so a tab keeps what was typed in it.
-export function Tabs({ tab, onTab, connectPhone, onConnected }: Props) {
+export function Tabs({ tab, onTab, connectPhone, onConnected, askRequest }: Props) {
   const buttons = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({})
 
   function move(event: KeyboardEvent) {
@@ -36,8 +44,8 @@ export function Tabs({ tab, onTab, connectPhone, onConnected }: Props) {
     ),
     inbox: <p className="empty">Dumps waiting for the next Ingest show here.</p>,
     pages: <p className="empty">Your Pages show here.</p>,
-    ask: <p className="empty">Ask… in the menu opens the Ask window.</p>,
-    settings: <Settings />,
+    ask: <Ask focusRequest={askRequest} />,
+    settings: <Settings botConnected={!connectPhone} onBotConnected={onConnected} />,
   }
 
   return (

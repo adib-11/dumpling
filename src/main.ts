@@ -19,18 +19,20 @@ import { askQuestion, type AskResult } from "./ask"
 import {
   readBrainFolder,
   readEngineChoice,
+  readOpenAtLogin,
   readTelegramChat,
   writeBrainFolder,
   writeEngineChoice,
+  writeOpenAtLogin,
   writeTelegramChat,
 } from "./brain-config"
-import { createSecondBrain, defaultSecondBrainFolder } from "./create-second-brain"
+import { createSecondBrain, defaultSecondBrainFolder, openSecondBrain } from "./create-second-brain"
 import { pollTelegram, type Asker } from "./drain-telegram"
 import { engineMedia, freeEngine, isProvider, keyEngine, keyProviders, offeredProviders, type Engine, type Provider } from "./engine"
 import { ytDlpAt } from "./fetch-link"
 import { backupRemote, hideCredentials, setBackupRemote } from "./git-remote"
 import { ingestNow, lastIngestError, lastIngestStatus, spawnOpencode, undoLastIngest, type IngestResult } from "./ingest-now"
-import { enableLinuxAutostart } from "./login-item"
+import { disableLinuxAutostart, enableLinuxAutostart } from "./login-item"
 import { windowState, type Tab, type WindowState } from "./main-window"
 import { problemReportUrl, systemName } from "./report-problem"
 import { claimDailyIngest, readDrain, rememberDrain } from "./schedule"
@@ -41,9 +43,12 @@ import { newerRelease, type NewRelease } from "./update-check"
 
 let tray: Tray | null = null
 let mainWindow: BrowserWindow | null = null
-let askBox: BrowserWindow | null = null
-let connecting: AbortController | null = null
-let polling = false
+// The /start wait, and the id of the bot it reads. That bot's poll waits until it is done.
+let connecting: { abort: AbortController; bot: string | null } | null = null
+// A token checked with getMe, kept here until /start connects it, so the bot in use stays until then.
+let checkedToken: string | null = null
+// The running Telegram poll, stopped and started again when Settings changes the bot or the folder.
+let poll: { stop: AbortController; done: Promise<void> } | null = null
 let unsaved: string | null = null
 let lastDrained: Date | null = null
 let awakeSince = Date.now()
@@ -175,6 +180,11 @@ function loadToken(): string | null {
   }
 }
 
+// A bot token starts with the bot's id: "<id>:<secret>".
+function botId(token: string | null): string | null {
+  return token?.split(":")[0] ?? null
+}
+
 function vendorBin(name: string): string {
   const exe = process.platform === "win32" ? `${name}.exe` : name
   const root = app.isPackaged ? process.resourcesPath : path.join(__dirname, "..", "vendor")
@@ -219,15 +229,16 @@ function startPolling(): void {
   const folder = readBrainFolder(configPath())
   const chat = readTelegramChat(configPath())
   const token = loadToken()
-  if (polling || !folder || chat === null || !token) return
-  polling = true
+  if (poll || !folder || chat === null || !token) return
+  if (connecting && connecting.bot === botId(token)) return
   lastDrained = readDrain(drainStamp(folder)) ?? new Date()
+  const stop = new AbortController()
   // The daily Ingest starts right after a drain, so it files what Telegram held overnight.
-  void pollTelegram(
+  const done = pollTelegram(
     telegramBot(token),
     folder,
     chat,
-    new AbortController().signal,
+    stop.signal,
     asker(),
     undefined,
     () => {
@@ -250,6 +261,22 @@ function startPolling(): void {
       },
     },
   )
+  poll = { stop, done }
+}
+
+// Waits for the poll to confirm what it saved, so the next poll does not save it again.
+async function stopPolling(): Promise<void> {
+  const running = poll
+  if (!running) return
+  running.stop.abort()
+  await running.done
+  if (poll === running) poll = null
+  lastDrained = null
+}
+
+async function restartPolling(): Promise<void> {
+  await stopPolling()
+  startPolling()
 }
 
 function drainStamp(folder: string): string {
@@ -289,7 +316,7 @@ function trayImage(state: TrayHealth): Electron.NativeImage {
 
 function refreshHealth(): void {
   const folder = readBrainFolder(configPath())
-  const next = trayHealth(folder ? lastIngestStatus(folder) : null, polling ? lastDrained : null, new Date())
+  const next = trayHealth(folder ? lastIngestStatus(folder) : null, poll ? lastDrained : null, new Date())
   if (next === health || !tray) return
   health = next
   tray.setImage(trayImage(health))
@@ -306,7 +333,7 @@ function asker(): Asker {
   }
 }
 
-// The one path every question takes: the tray Ask box and Telegram /ask both run this.
+// The one path every question takes: the Ask tab and Telegram /ask both run this.
 async function runAsk(question: string): Promise<AskResult> {
   const folder = readBrainFolder(configPath())
   const engine = currentEngine()
@@ -324,29 +351,30 @@ function resourcePath(...parts: string[]): string {
   return path.join(root, ...parts)
 }
 
-function enableLogin(): void {
+// The packaged app opens at login unless Settings turned it off. Throws when the system refuses.
+function applyLogin(): void {
   if (!app.isPackaged) return
-  try {
-    if (process.platform === "linux") {
-      const configHome = process.env.XDG_CONFIG_HOME || path.join(app.getPath("home"), ".config")
-      enableLinuxAutostart(
-        configHome,
-        process.env.APPIMAGE || process.execPath,
-        process.env.APPIMAGE_EXTRACT_AND_RUN === "1",
-      )
+  const on = readOpenAtLogin(configPath())
+  if (process.platform === "linux") {
+    const configHome = process.env.XDG_CONFIG_HOME || path.join(app.getPath("home"), ".config")
+    if (!on) {
+      disableLinuxAutostart(configHome)
       return
     }
-    app.setLoginItemSettings({ openAtLogin: true })
-  } catch (error) {
-    console.error("Could not register the login item.", error)
+    enableLinuxAutostart(
+      configHome,
+      process.env.APPIMAGE || process.execPath,
+      process.env.APPIMAGE_EXTRACT_AND_RUN === "1",
+    )
+    return
   }
+  app.setLoginItemSettings({ openAtLogin: on })
 }
 
-// The Dock icon shows while a window is open; the app stays in the menu bar either way. On Windows and Linux
-// each open window has its own taskbar entry.
+// The Dock icon shows while the main window is open; the app stays in the menu bar either way.
 function updateDock(): void {
   if (process.platform !== "darwin") return
-  if (mainWindow || askBox) void app.dock?.show()
+  if (mainWindow) void app.dock?.show()
   else app.dock?.hide()
 }
 
@@ -377,43 +405,16 @@ function openMainWindow(tab: Tab | null = null): void {
   mainWindow.webContents.on("will-navigate", (event) => event.preventDefault())
   void mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"))
   mainWindow.on("closed", () => {
-    connecting?.abort()
+    connecting?.abort.abort()
     mainWindow = null
     pendingTab = null
     updateDock()
   })
 }
 
+// Before first run is done the window shows first run instead.
 function openAsk(): void {
-  if (!firstRunDone()) {
-    openMainWindow()
-    return
-  }
-  if (askBox) {
-    askBox.show()
-    askBox.focus()
-    return
-  }
-  askBox = new BrowserWindow({
-    width: 560,
-    height: 520,
-    autoHideMenuBar: true,
-    title: "Ask",
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
-  })
-  askBox.webContents.setWindowOpenHandler(() => ({ action: "deny" }))
-  askBox.webContents.on("will-navigate", (event) => event.preventDefault())
-  updateDock()
-  void askBox.loadFile(path.join(__dirname, "ask.html"))
-  askBox.on("closed", () => {
-    askBox = null
-    updateDock()
-  })
+  openMainWindow(firstRunDone() ? "ask" : null)
 }
 
 function toMenuItem(item: TrayMenuItem): Electron.MenuItemConstructorOptions {
@@ -598,7 +599,7 @@ function start(): void {
     return tab
   })
 
-  ipcMain.handle("ask:question", async (_event, question: unknown) => {
+  ipcMain.handle("window:ask", async (_event, question: unknown) => {
     if (typeof question !== "string" || question.trim() === "") {
       return { ok: false as const, error: "Type a question." }
     }
@@ -686,37 +687,87 @@ function start(): void {
 
   ipcMain.handle("window:open-botfather", () => shell.openExternal("https://t.me/BotFather"))
 
+  ipcMain.handle("window:folder", () => readBrainFolder(configPath()))
+
+  // Settings points the app at another second brain, or makes one in an empty folder. The old folder stays as it is.
+  ipcMain.handle("window:change-folder", async (_event, folder: unknown) => {
+    if (typeof folder !== "string" || folder.trim() === "") {
+      return { ok: false as const, error: "Choose a folder." }
+    }
+    const chosen = folder.trim()
+    try {
+      const { created } = await openSecondBrain(chosen, resourcePath("templates"))
+      writeBrainFolder(configPath(), chosen)
+      backupFailed = false
+      rebuildMenu()
+      await restartPolling()
+      refreshHealth()
+      return { ok: true as const, created }
+    } catch (error) {
+      return { ok: false as const, error: errorMessage(error, "Could not use that folder.") }
+    }
+  })
+
+  ipcMain.handle("window:open-at-login", () => readOpenAtLogin(configPath()))
+
+  ipcMain.handle("window:set-open-at-login", (_event, on: unknown) => {
+    if (typeof on !== "boolean") return { ok: false as const, error: "Choose on or off." }
+    const before = readOpenAtLogin(configPath())
+    writeOpenAtLogin(configPath(), on)
+    try {
+      applyLogin()
+      return { ok: true as const }
+    } catch (error) {
+      writeOpenAtLogin(configPath(), before)
+      return { ok: false as const, error: errorMessage(error, "The system did not take the change.") }
+    }
+  })
+
   ipcMain.handle("window:check-token", async (_event, pasted: unknown) => {
     try {
       if (typeof pasted !== "string") throw new Error("Paste the bot token.")
       const token = pasted.trim()
       const me = (await telegramBot(token)("getMe")) as { username: string }
-      saveToken(token)
+      if (!keychainReady()) throw new Error("No OS keychain is available to keep the bot token.")
+      checkedToken = token
       return { ok: true as const, username: me.username }
     } catch (error) {
       return { ok: false as const, error: errorMessage(error, "Could not check the token.") }
     }
   })
 
+  // The bot in use keeps polling until the new one's /start arrives. When the token is for that same bot its
+  // poll stops while connectBot reads the updates, since Telegram serves one getUpdates per bot at a time.
   ipcMain.handle("window:wait-start", async () => {
-    const token = loadToken()
+    const token = checkedToken
     if (!token) return { ok: false as const, error: "Check the bot token first." }
-    connecting?.abort()
-    connecting = new AbortController()
+    connecting?.abort.abort()
+    const attempt = { abort: new AbortController(), bot: botId(token) }
+    connecting = attempt
+    if (botId(loadToken()) === attempt.bot) await stopPolling()
     try {
-      const chat = await connectBot(telegramBot(token), connecting.signal)
+      const chat = await connectBot(telegramBot(token), attempt.abort.signal)
+      if (connecting === attempt) connecting = null
+      saveToken(token)
       writeTelegramChat(configPath(), chat)
+      checkedToken = null
       rebuildMenu()
-      startPolling()
+      await restartPolling()
       return { ok: true as const }
     } catch (error) {
+      if (connecting === attempt) connecting = null
+      startPolling()
       return { ok: false as const, error: errorMessage(error, "Could not reach the bot.") }
     }
   })
 
   void app.whenReady().then(async () => {
     await moveOldSettings()
-    enableLogin()
+    try {
+      applyLogin()
+    } catch (error) {
+      console.error("Could not register the login item.", error)
+    }
     if (process.platform === "darwin") app.dock?.hide()
     createTray()
     startPolling()
@@ -728,7 +779,7 @@ function start(): void {
     // reach for 5 minutes since the last start or wake, the clock does: the drain is best-effort.
     const tick = () => {
       const drainedOrAwake = Math.max(lastDrained?.getTime() ?? 0, awakeSince)
-      if (!polling || Date.now() - drainedOrAwake > 5 * 60 * 1000) dailyIngest()
+      if (!poll || Date.now() - drainedOrAwake > 5 * 60 * 1000) dailyIngest()
       refreshHealth()
     }
     tick()

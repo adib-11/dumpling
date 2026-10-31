@@ -5,6 +5,7 @@ type Config = {
   brainFolder?: unknown
   telegramChat?: unknown
   engine?: unknown
+  openAtLogin?: unknown
 }
 
 export type EngineChoice = Engine["name"]
@@ -35,6 +36,15 @@ export function readEngineChoice(configPath: string): EngineChoice | null {
 
 export function writeEngineChoice(configPath: string, engine: EngineChoice): void {
   writeConfig(configPath, { ...readConfig(configPath), engine })
+}
+
+// On until the Owner turns it off in Settings.
+export function readOpenAtLogin(configPath: string): boolean {
+  return readConfig(configPath).openAtLogin !== false
+}
+
+export function writeOpenAtLogin(configPath: string, openAtLogin: boolean): void {
+  writeConfig(configPath, { ...readConfig(configPath), openAtLogin })
 }
 
 function readConfig(configPath: string): Config {

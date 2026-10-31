@@ -7,6 +7,7 @@ import { Tabs } from "./Tabs"
 export function App() {
   const [state, setState] = useState<WindowState | null>(null)
   const [tab, setTab] = useState<Tab>("today")
+  const [askRequest, setAskRequest] = useState(0)
 
   const refresh = useCallback(() => {
     void window.dumpling.state().then(setState)
@@ -14,7 +15,10 @@ export function App() {
 
   useEffect(() => {
     refresh()
-    window.dumpling.onTab(setTab)
+    window.dumpling.onTab((asked) => {
+      setTab(asked)
+      if (asked === "ask") setAskRequest((count) => count + 1)
+    })
   }, [refresh])
 
   if (!state) return null
@@ -33,5 +37,13 @@ export function App() {
       </main>
     )
   }
-  return <Tabs tab={tab} onTab={setTab} connectPhone={state.connectPhone} onConnected={refresh} />
+  return (
+    <Tabs
+      tab={tab}
+      onTab={setTab}
+      connectPhone={state.connectPhone}
+      onConnected={refresh}
+      askRequest={askRequest}
+    />
+  )
 }

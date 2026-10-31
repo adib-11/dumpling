@@ -63,7 +63,8 @@ export async function drainTelegram(
 }
 
 // Long-polls the bot until stopped. A failed poll is retried; its batch stays unconfirmed, so nothing is lost.
-// onDrained runs after each successful poll.
+// onDrained runs after each successful poll. Stopping ends a waiting long poll at once, then confirms what was
+// saved, so a poll that starts next (another bot, another folder) does not save it again.
 export async function pollTelegram(
   bot: Bot,
   folder: string,
@@ -74,11 +75,16 @@ export async function pollTelegram(
   onDrained: () => void = () => {},
   options?: { media?: MediaReader; onUnsaved?: (notice: string | null) => void },
 ): Promise<void> {
+  const stoppable = Object.assign(
+    (method: string, params?: Record<string, unknown>, signal?: AbortSignal) =>
+      bot(method, params, method === "getUpdates" ? (signal ?? stop) : signal),
+    { file: bot.file },
+  )
   let offset: number | undefined
   while (!stop.aborted) {
     let blocked = false
     try {
-      offset = await drainTelegram(bot, folder, chat, offset, ask, options?.media, (notice) => {
+      offset = await drainTelegram(stoppable, folder, chat, offset, ask, options?.media, (notice) => {
         blocked = notice !== null
         options?.onUnsaved?.(notice)
       })
@@ -86,10 +92,15 @@ export async function pollTelegram(
       // The failed update is still waiting, so getUpdates would return it at once. Wait before spending another call.
       if (blocked && !stop.aborted) await new Promise((resolve) => setTimeout(resolve, retryMs))
     } catch (error) {
+      if (stop.aborted) break
       console.error("drain-telegram: poll failed", error)
       await new Promise((resolve) => setTimeout(resolve, retryMs))
     }
   }
+  if (offset === undefined) return
+  await bot("getUpdates", { offset, timeout: 0 }).catch((error: unknown) => {
+    console.error("drain-telegram: could not confirm the last batch", error)
+  })
 }
 
 // Telegram drops an update after 24 h. After 12 h a failed voice note or photo is saved as a placeholder instead, so the file id is not lost.

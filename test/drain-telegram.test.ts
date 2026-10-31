@@ -519,6 +519,21 @@ async function until(done: () => boolean): Promise<void> {
   assert.ok(done())
 }
 
+test("a stopped poll confirms what it saved, so a poll into another folder does not save it again", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  const other = fs.mkdtempSync(path.join(os.tmpdir(), "drain-telegram-"))
+  await createSecondBrain(other, templatesDir)
+  api.updates = [message(1, 10, at, { text: "saved before the folder changed" })]
+  const stop = new AbortController()
+
+  await pollTelegram(bot, folder, 111, stop.signal, undefined, 10, () => stop.abort())
+  await drainTelegram(bot, other, 111)
+
+  assert.deepEqual(inbox(folder), ["2026-10-21-140000-telegram.md"])
+  assert.deepEqual(inbox(other), [])
+})
+
 test("an /ask message is answered in the chat and never becomes a Dump", async (t) => {
   const { folder, api, bot } = await setup()
   t.after(api.close)

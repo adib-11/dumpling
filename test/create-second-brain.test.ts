@@ -4,7 +4,7 @@ import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 import { exec } from "dugite"
-import { createSecondBrain, defaultSecondBrainFolder } from "../src/create-second-brain"
+import { createSecondBrain, defaultSecondBrainFolder, openSecondBrain } from "../src/create-second-brain"
 
 const templatesDir = path.join(__dirname, "..", "templates")
 
@@ -245,6 +245,51 @@ test("createSecondBrain refuses a relative folder", async () => {
   await assert.rejects(() => createSecondBrain("Second Brain", templatesDir), /full folder path/)
 
   assert.equal(fs.existsSync(path.resolve("Second Brain")), false)
+})
+
+test("opening an existing second brain uses it as it is", async () => {
+  const folder = tempFolder()
+  const created = await createSecondBrain(folder, templatesDir)
+  fs.writeFileSync(path.join(folder, "vault/wiki/topics/sleep.md"), "# Sleep\n")
+
+  assert.deepEqual(await openSecondBrain(folder, templatesDir), { created: false })
+
+  assert.equal(fs.readFileSync(path.join(folder, "vault/wiki/topics/sleep.md"), "utf8"), "# Sleep\n")
+  const head = await exec(["rev-parse", "HEAD"], folder)
+  assert.equal(head.stdout.trim(), created.commit)
+})
+
+test("opening an empty folder makes a new second brain in it", async () => {
+  const folder = path.join(tempFolder(), "Dumpling")
+
+  assert.deepEqual(await openSecondBrain(folder, templatesDir), { created: true })
+
+  const subject = await exec(["log", "-1", "--format=%s"], folder)
+  assert.equal(subject.stdout.trim(), "create second brain")
+})
+
+test("opening a folder of other files refuses it and leaves it alone", async () => {
+  const folder = tempFolder()
+  fs.writeFileSync(path.join(folder, "taxes.pdf"), "pdf")
+
+  await assert.rejects(
+    () => openSecondBrain(folder, templatesDir),
+    /That folder has other files in it\. Choose a second brain folder or an empty one\./,
+  )
+
+  assert.deepEqual(fs.readdirSync(folder), ["taxes.pdf"])
+})
+
+test("opening a relative folder refuses it, even when it is a second brain", async () => {
+  const parent = tempFolder()
+  await createSecondBrain(path.join(parent, "brain"), templatesDir)
+  const saved = process.cwd()
+  process.chdir(parent)
+  try {
+    await assert.rejects(() => openSecondBrain("brain", templatesDir), /full folder path/)
+  } finally {
+    process.chdir(saved)
+  }
 })
 
 function snapshotEnv(keys: string[]): Map<string, string | undefined> {

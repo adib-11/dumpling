@@ -38,4 +38,11 @@ export type DumplingApi = {
   waitStart(): Promise<Outcome>
   backupRemote(): Promise<boolean>
   saveRemote(url: string): Promise<Outcome>
+  // Runs the ask skill on one question, as /ask in Telegram does.
+  ask(question: string): Promise<{ ok: true; answer: string } | { ok: false; error: string }>
+  folder(): Promise<string | null>
+  // Uses the second brain in that folder, or makes one when it is empty.
+  changeFolder(folder: string): Promise<{ ok: true; created: boolean } | { ok: false; error: string }>
+  openAtLogin(): Promise<boolean>
+  setOpenAtLogin(on: boolean): Promise<Outcome>
 }
