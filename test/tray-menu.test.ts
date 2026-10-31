@@ -2,14 +2,15 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { trayHealth, trayMenuItems } from "../src/tray-menu"
 
-test("the tray menu quits, reports a problem, and offers setup until a folder is chosen", () => {
-  assert.deepEqual(trayMenuItems(null, false), [
-    { label: "Choose folder…", action: "setup", enabled: true },
+test("the tray menu opens Dumpling, reports a problem and quits before first run is done", () => {
+  assert.deepEqual(trayMenuItems(null), [
+    { label: "Open Dumpling", action: "open", enabled: true },
     { label: "Report a problem", action: "report", enabled: true },
     { label: "Quit", action: "quit", enabled: true },
   ])
 
-  assert.deepEqual(trayMenuItems("/home/ada/Documents/Dumpling", true), [
+  assert.deepEqual(trayMenuItems("/home/ada/Documents/Dumpling"), [
+    { label: "Open Dumpling", action: "open", enabled: true },
     { label: "/home/ada/Documents/Dumpling", enabled: false },
     { label: "Ingest now", action: "ingest", enabled: true },
     { label: "Undo last Ingest", action: "undo", enabled: true },
@@ -21,7 +22,8 @@ test("the tray menu quits, reports a problem, and offers setup until a folder is
 })
 
 test("the tray shows a voice note that could not be transcribed", () => {
-  assert.deepEqual(trayMenuItems("/home/ada/Documents/Dumpling", true, false, "Voice note not transcribed"), [
+  assert.deepEqual(trayMenuItems("/home/ada/Documents/Dumpling", false, "Voice note not transcribed"), [
+    { label: "Open Dumpling", action: "open", enabled: true },
     { label: "/home/ada/Documents/Dumpling", enabled: false },
     { label: "Voice note not transcribed", enabled: false },
     { label: "Ingest now", action: "ingest", enabled: true },
@@ -33,21 +35,9 @@ test("the tray shows a voice note that could not be transcribed", () => {
   ])
 })
 
-test("the tray menu offers to connect Telegram until a chat is connected", () => {
-  assert.deepEqual(trayMenuItems("/home/ada/Documents/Dumpling", false), [
-    { label: "/home/ada/Documents/Dumpling", enabled: false },
-    { label: "Ingest now", action: "ingest", enabled: true },
-    { label: "Undo last Ingest", action: "undo", enabled: true },
-    { label: "Ask…", action: "ask", enabled: true },
-    { label: "Connect Telegram…", action: "setup", enabled: true },
-    { label: "Backup remote…", action: "remote", enabled: true },
-    { label: "Report a problem", action: "report", enabled: true },
-    { label: "Quit", action: "quit", enabled: true },
-  ])
-})
-
 test("the tray menu shows a failed backup push", () => {
-  assert.deepEqual(trayMenuItems("/home/ada/Documents/Dumpling", true, true), [
+  assert.deepEqual(trayMenuItems("/home/ada/Documents/Dumpling", true), [
+    { label: "Open Dumpling", action: "open", enabled: true },
     { label: "/home/ada/Documents/Dumpling", enabled: false },
     { label: "Backup push failed", enabled: false },
     { label: "Ingest now", action: "ingest", enabled: true },

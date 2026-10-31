@@ -9,11 +9,11 @@ Send it a thought, a link, a voice note or a photo from Telegram on your phone. 
 You need a Mac (Apple silicon), Windows or Linux computer that is awake at least once a day, and Telegram on your phone. The free Engine needs nothing else. With your own OpenAI API key instead, expect about $1 to $2 a month in OpenAI cost for 10 Dumps a day; `.state/runs.tsv` in your folder keeps the cost of each Ingest.
 
 1. **Download.** Open the [latest release](https://github.com/adib-11/dumpling/releases/latest) and download the file for your system (see the table below).
-2. **Open it.** The app is unsigned, so your system warns you once. Follow the steps for [Mac](#mac), [Windows](#windows) or [Linux](#linux). The app then sits in the menu bar (Mac) or system tray (Windows, Linux), and a setup window opens.
+2. **Open it.** The app is unsigned, so your system warns you once. Follow the steps for [Mac](#mac), [Windows](#windows) or [Linux](#linux). The app then sits in the menu bar (Mac) or system tray (Windows, Linux), and the Dumpling window opens.
 3. **Choose a folder.** Keep the default, `Documents/Dumpling`, and choose Create.
 4. **Choose the Engine.** Keep Start free and choose Continue. Or choose Use my own key, pick the provider, then Get a key to open its key page, create a key, paste it, and choose Save key. The app checks it with one call to that provider and keeps it in your system's keychain.
-5. **Make a Telegram bot.** Choose Open BotFather, send it `/newbot` in Telegram, pick any name, paste the token it gives you, and choose Check.
-6. **Send `/start` to your new bot** from your phone. The bot replies "Connected". Only this chat can send to it.
+5. **Connect your phone.** You land on Today. Its Connect your phone card makes a Telegram bot: choose Open BotFather, send it `/newbot` in Telegram, pick any name, paste the token it gives you, and choose Check.
+6. **Send `/start` to your new bot** from your phone. The bot replies "Connected" and the card goes away. Only this chat can send to it.
 7. **Send your first Dump.** Send the bot any message, for example a thought or a link. Within seconds it disappears from the chat: it is saved in the folder's `inbox/`.
 8. **File it.** Choose Ingest now in the tray menu. After a minute or two the Dump is filed into pages under `vault/wiki/` in your folder. Open `vault/` in [Obsidian](https://obsidian.md) to read them, or any text editor. Without Ingest now, the app files everything by itself once a day.
 9. **Ask.** Send the bot `/ask what did I save today?`. It replies from your pages, naming the pages it used. Ask… in the tray menu does the same in a window.
@@ -65,13 +65,15 @@ If FUSE is unavailable, `APPIMAGE_EXTRACT_AND_RUN=1 ./Dumpling-*-x86_64.AppImage
 
 ## First launch
 
-The app sits in the menu bar on Mac and in the system tray on Windows and Linux. The menu shows the folder, Ingest now, Undo last Ingest, Ask…, Connect Telegram… until a bot is connected, Backup remote…, Report a problem, and Quit.
+The app sits in the menu bar on Mac and in the system tray on Windows and Linux. The menu shows Open Dumpling, the folder, Ingest now, Undo last Ingest, Ask…, Backup remote…, Report a problem, and Quit.
 
-Backup remote… takes a git remote URL. After each Ingest the app pushes to it, last and best-effort. A failed push rolls nothing back: the menu shows "Backup push failed", the app notifies once, and the next Ingest pushes again. Save a blank URL to stop pushing.
+Open Dumpling opens the main window, with five tabs: Today, Inbox, Pages, Ask and Settings. While it is open the app also has a Dock icon (Mac) or a taskbar entry (Windows, Linux); closing it leaves the app in the menu bar or tray only. Inbox, Pages and Ask are empty for now. Settings changes the Engine and the backup remote.
+
+Backup remote… opens Settings, which takes a git remote URL. After each Ingest the app pushes to it, last and best-effort. A failed push rolls nothing back: the menu shows "Backup push failed", the app notifies once, and the next Ingest pushes again. Save a blank URL to stop pushing.
 
 Report a problem opens a new GitHub issue on the bug report form, filled in with the app version, the system and the last failed Ingest from `.state/runs.tsv` (its time and reason, with the folder path replaced by `<folder>`). It carries no Dump or Page text. Nothing is sent until you submit the issue on GitHub.
 
-The first window asks for a folder, then the Engine: Start free (selected) or Use my own key. Start free runs a free model through opencode with no key; the Dumps go to opencode's servers in the US and EU, and the app offers only models whose terms say they keep no data and do not train on it (`freeModels` in `src/engine.ts`). Use my own key sends the Dumps to the provider picked; the wizard checks the key with one call to that provider and stores it in the OS keychain. The Key Engines are OpenAI, Gemini, Anthropic and OpenRouter (`keyProviders` in `src/engine.ts`), each with a default model and a cost table; setup offers a provider only once its default model has passed the v1 fixture set. Today that is OpenAI and Gemini (`google/gemini-3.5-flash-lite`, 57/58); Anthropic and OpenRouter wait for their runs. The key reaches opencode in the provider's environment variable only, never in its arguments, a log or the folder. The default folder is `Documents/Dumpling`. Create makes that folder, without a git install on the computer (git is bundled):
+First run, in the main window, asks for a folder, then the Engine, then lands on Today. The Engine is Start free (selected) or Use my own key. Start free runs a free model through opencode with no key; the Dumps go to opencode's servers in the US and EU, and the app offers only models whose terms say they keep no data and do not train on it (`freeModels` in `src/engine.ts`). Use my own key sends the Dumps to the provider picked; the app checks the key with one call to that provider and stores it in the OS keychain. The Key Engines are OpenAI, Gemini, Anthropic and OpenRouter (`keyProviders` in `src/engine.ts`), each with a default model and a cost table; setup offers a provider only once its default model has passed the v1 fixture set. Today that is OpenAI and Gemini (`google/gemini-3.5-flash-lite`, 57/58); Anthropic and OpenRouter wait for their runs. The key reaches opencode in the provider's environment variable only, never in its arguments, a log or the folder. The default folder is `Documents/Dumpling`. Create makes that folder, without a git install on the computer (git is bundled):
 
 - `inbox/`
 - `vault/raw/`
@@ -80,7 +82,7 @@ The first window asks for a folder, then the Engine: Start free (selected) or Us
 - `SOURCE_COMMIT`, the commit those templates were copied from
 - a git repo on branch `main` whose first commit is `create second brain`
 
-Next the window asks for a Telegram bot. Open BotFather, send `/newbot`, and paste the token; the app checks it with `getMe`. Then send `/start` to the new bot from your phone. That chat becomes the only one the app accepts, and the bot replies "Connected". The token is kept encrypted with Electron `safeStorage`, whose key is in the OS keychain (on Linux this needs a keyring such as GNOME Keyring or KWallet). It is never written to the second brain folder.
+Telegram is optional. Without a bot, Ingest now, the daily Ingest and Ask… all work, and `/ask` in Telegram and Follow-ups wait for one. Until a bot is connected, Today shows a Connect your phone card. Open BotFather, send `/newbot`, and paste the token; the app checks it with `getMe`. Then send `/start` to the new bot from your phone. That chat becomes the only one the app accepts, the bot replies "Connected", and the card goes away. The token is kept encrypted with Electron `safeStorage`, whose key is in the OS keychain (on Linux this needs a keyring such as GNOME Keyring or KWallet). It is never written to the second brain folder.
 
 While the computer is awake, the app long-polls the bot. Each text message becomes a Dump in `inbox/` (`device: telegram`, with its `telegram_message_id`) and is deleted from the chat. With an OpenAI or Gemini key, a voice note is transcribed (`gpt-transcribe`, or the Gemini default model) and saved as text only; the audio is not kept. On the free Engine, or with an Anthropic or OpenRouter key, a voice note becomes a placeholder Dump that says an OpenAI or Gemini key is needed, with the audio kept beside it. A photo is saved as a JPEG about 1200 px wide beside its Dump, and the text read from it by the Engine (`gpt-5.6-luna` with an OpenAI key, or the Engine's model through opencode with the image attached) is kept under `## Image text`. A file over 20 MB, or any other file that is not a photo, becomes a placeholder Dump and is not downloaded. A voice note or photo that cannot be saved stays in the chat, and the tray names it, until a later poll. An image the app cannot decode as a JPEG (a PNG, say) becomes a placeholder Dump at once, since a retry would fail the same way. Each batch is a commit, `drain: N Dumps`. Messages from any other chat are ignored.
 
@@ -100,7 +102,7 @@ The app does not update itself. Once a day it asks GitHub for the latest release
 
 ### From Second Brain to Dumpling
 
-The app was called Second Brain before v0.2. On its first start, Dumpling moves the settings of a Second Brain install (`config.json`, the key and the bot token) from the old settings folder, `second-brain-app`, to its own, `Dumpling`. The key and token are sealed again under the new name; on a Mac the system may ask once whether Dumpling may use the "second-brain-app Safe Storage" keychain item. Choose Allow. Your second brain folder does not move, and Dumpling keeps using it. If the keychain refuses, the old folder keeps everything, the app says which secret did not move, and setup asks for it again.
+The app was called Second Brain before v0.2. On its first start, Dumpling moves the settings of a Second Brain install (`config.json`, the key and the bot token) from the old settings folder, `second-brain-app`, to its own, `Dumpling`. The key and token are sealed again under the new name; on a Mac the system may ask once whether Dumpling may use the "second-brain-app Safe Storage" keychain item. Choose Allow. Your second brain folder does not move, and Dumpling keeps using it. If the keychain refuses, the old folder keeps everything, the app says which secret did not move, and the Dumpling window asks for it again: the Engine step for a key, the Connect your phone card for a bot token.
 
 Then delete the Second Brain app. On a Mac, also remove it from System Settings → General → Login Items; Windows and Linux drop its login entry for you.
 
@@ -123,7 +125,7 @@ npm start
 
 `node scripts/fetch-opencode.js` and `node scripts/fetch-yt-dlp.js` put the bundled binaries in `vendor/`. `node scripts/fetch-link-live.js` (after `npm run build`) fetches one real link per route and prints each result; it needs the network, so it is not part of `npm test`.
 
-`npm start` opens the wizard and the tray. It does not register a login item; that happens in the packaged app.
+`npm start` builds the app, including the main window's React renderer (`renderer/`, built by Vite into `dist/renderer/`), and opens the tray, plus the main window until first run is done. It does not register a login item; that happens in the packaged app.
 
 ### Releasing
 
