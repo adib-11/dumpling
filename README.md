@@ -137,7 +137,7 @@ The logo is `assets/logo.svg` and the menu bar glyph is `assets/tray.svg`. After
 
 ### Releasing
 
-The release workflow builds unsigned installers and attaches them to a draft GitHub Release. It runs when a `v*` tag is pushed, and it can also be started by hand (Actions → Release → Run workflow, with a tag such as `v0.1.0`). The Mac build is ad-hoc signed so macOS does not call it damaged. Bump `version` in `package.json` to match the tag, since the update check compares the two. Publishing the draft makes it the latest release, which the app links to.
+The release workflow builds unsigned installers and attaches them to a draft GitHub Release. It runs when a `v*` tag is pushed, and it can also be started by hand (Actions → Release → Run workflow, with a tag such as `v0.2.0`). The Mac build is ad-hoc signed so macOS does not call it damaged. Bump `version` in `package.json` to match the tag, since the update check compares the two. Publishing the draft makes it the latest release, which the app links to.
 
 ### Renaming the repo
 
