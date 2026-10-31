@@ -2,6 +2,7 @@ import { useRef, type KeyboardEvent, type ReactNode } from "react"
 import { tabs, type Tab } from "../src/main-window"
 import { ConnectPhone } from "./ConnectPhone"
 import { Inbox } from "./Inbox"
+import { Pages } from "./Pages"
 import { Settings } from "./Settings"
 import { Today } from "./Today"
 
@@ -37,7 +38,7 @@ export function Tabs({ tab, onTab, connectPhone, onConnected }: Props) {
       </>
     ),
     inbox: <Inbox />,
-    pages: <p className="empty">Your Pages show here.</p>,
+    pages: <Pages active={tab === "pages"} />,
     ask: <p className="empty">Ask… in the menu opens the Ask window.</p>,
     settings: <Settings />,
   }

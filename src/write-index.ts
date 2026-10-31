@@ -3,7 +3,7 @@ import path from "node:path"
 
 const kinds = ["people", "works", "topics", "projects", "places"]
 
-type Frontmatter = Record<string, string | string[]>
+export type Frontmatter = Record<string, string | string[]>
 
 function unquote(value: string): string {
   const match = value.match(/^(["'])(.*)\1$/)
@@ -11,7 +11,11 @@ function unquote(value: string): string {
 }
 
 function frontmatter(file: string): Frontmatter {
-  const lines = fs.readFileSync(file, "utf8").split(/\r?\n/)
+  return parseFrontmatter(fs.readFileSync(file, "utf8"))
+}
+
+export function parseFrontmatter(text: string): Frontmatter {
+  const lines = text.split(/\r?\n/)
   const fm: Frontmatter = {}
   if (!/^---\s*$/.test(lines[0] ?? "")) return fm
   let key: string | undefined

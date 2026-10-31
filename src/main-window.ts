@@ -2,6 +2,7 @@
 // Shared by the main process, the preload and the renderer, so it imports nothing but types.
 
 import type { InboxDump } from "./inbox"
+import type { PageGroup, PageHit, PageView } from "./page-view"
 import type { TodayView } from "./today"
 
 export type WindowStep = "folder" | "engine" | "today"
@@ -41,6 +42,15 @@ export type DumplingApi = {
   waitStart(): Promise<Outcome>
   backupRemote(): Promise<boolean>
   saveRemote(url: string): Promise<Outcome>
+  // The Pages tab. All of it reads; no call changes a Page.
+  pages(): Promise<PageGroup[]>
+  // null when `id` is not a Page.
+  page(id: string): Promise<PageView | null>
+  searchPages(query: string): Promise<PageHit[]>
+  obsidianInstalled(): Promise<boolean>
+  openInObsidian(id: string): Promise<void>
+  // Opens an http or https link in the browser; anything else is ignored.
+  openLink(url: string): Promise<void>
   // null before a folder is chosen.
   today(): Promise<TodayView | null>
   inbox(): Promise<InboxDump[]>

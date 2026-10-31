@@ -33,6 +33,8 @@ import { ingestNow, lastIngestError, lastIngestStatus, spawnOpencode, undoLastIn
 import { deleteDump, editDump, listInbox } from "./inbox"
 import { enableLinuxAutostart } from "./login-item"
 import { windowState, type Tab, type WindowState } from "./main-window"
+import { obsidianUrl } from "./obsidian"
+import { listPages, readPage, searchPages } from "./pages"
 import { problemReportUrl, systemName } from "./report-problem"
 import { claimDailyIngest, readDrain, rememberDrain } from "./schedule"
 import { isSecretName, moveSettings, oldAppName } from "./settings-move"
@@ -642,6 +644,35 @@ function start(): void {
     } catch (error) {
       return { ok: false as const, error: hideCredentials(errorMessage(error, "Could not set the remote.")) }
     }
+  })
+
+  ipcMain.handle("pages:list", () => {
+    const folder = readBrainFolder(configPath())
+    return folder ? listPages(folder) : []
+  })
+
+  ipcMain.handle("pages:read", async (_event, id: unknown) => {
+    const folder = readBrainFolder(configPath())
+    return folder && typeof id === "string" ? readPage(folder, id) : null
+  })
+
+  ipcMain.handle("pages:search", (_event, query: unknown) => {
+    const folder = readBrainFolder(configPath())
+    return folder && typeof query === "string" ? searchPages(folder, query) : []
+  })
+
+  ipcMain.handle("pages:obsidian-installed", () => app.getApplicationNameForProtocol("obsidian://") !== "")
+
+  ipcMain.handle("pages:open-in-obsidian", (_event, id: unknown) => {
+    const folder = readBrainFolder(configPath())
+    if (!folder || typeof id !== "string") return
+    // Only a listed Page gets a link, so the renderer cannot point Obsidian at another file.
+    const listed = listPages(folder).some((group) => group.pages.some((page) => page.id === id))
+    if (listed) return shell.openExternal(obsidianUrl(folder, id))
+  })
+
+  ipcMain.handle("pages:open-link", (_event, url: unknown) => {
+    if (typeof url === "string" && /^https?:\/\//i.test(url)) return shell.openExternal(url)
   })
 
   ipcMain.handle("window:today", () => {

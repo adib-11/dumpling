@@ -124,6 +124,92 @@ section + section {
   opacity: 0.7;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+button.page-link {
+  border: 0;
+  background: none;
+  color: LinkText;
+  padding: 0;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.missing-link {
+  color: #9f2d1e;
+  text-decoration: underline dashed;
+}
+
+.elsewhere-link {
+  opacity: 0.7;
+}
+
+.page-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px;
+}
+
+.page-list li {
+  margin-bottom: 4px;
+}
+
+.page-summary,
+.snippet {
+  opacity: 0.7;
+}
+
+.snippet {
+  margin: 0 0 8px;
+}
+
+.page-bar {
+  margin-bottom: 16px;
+}
+
+.callout {
+  border-left: 3px solid color-mix(in srgb, currentColor 40%, transparent);
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  padding: 8px 12px;
+  margin-bottom: 16px;
+}
+
+.callout-title {
+  font-weight: 650;
+  margin-bottom: 4px;
+}
+
+.page blockquote {
+  margin: 0 0 16px;
+  padding-left: 12px;
+  border-left: 3px solid color-mix(in srgb, currentColor 20%, transparent);
+}
+
+.page table {
+  border-collapse: collapse;
+  margin-bottom: 16px;
+}
+
+.page th,
+.page td {
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  padding: 4px 8px;
+  text-align: left;
+}
+
+.page pre {
+  overflow-x: auto;
+  padding: 8px;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+
 .failure {
   border-color: #9f2d1e;
 }
