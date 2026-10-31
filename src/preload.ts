@@ -1,12 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron"
 import type { DumplingApi, Tab } from "./main-window"
 
-export type AskReply = { ok: true; answer: string } | { ok: false; error: string }
-
-contextBridge.exposeInMainWorld("ask", {
-  question: (question: string): Promise<AskReply> => ipcRenderer.invoke("ask:question", question),
-})
-
 const dumpling: DumplingApi = {
   state: () => ipcRenderer.invoke("window:state"),
   engine: () => ipcRenderer.invoke("window:engine"),
@@ -28,6 +22,29 @@ const dumpling: DumplingApi = {
   waitStart: () => ipcRenderer.invoke("window:wait-start"),
   backupRemote: () => ipcRenderer.invoke("window:backup-remote"),
   saveRemote: (url) => ipcRenderer.invoke("window:save-remote", url),
+  ask: (question) => ipcRenderer.invoke("window:ask", question),
+  folder: () => ipcRenderer.invoke("window:folder"),
+  changeFolder: (folder) => ipcRenderer.invoke("window:change-folder", folder),
+  openAtLogin: () => ipcRenderer.invoke("window:open-at-login"),
+  setOpenAtLogin: (on) => ipcRenderer.invoke("window:set-open-at-login", on),
+  pages: () => ipcRenderer.invoke("pages:list"),
+  page: (id) => ipcRenderer.invoke("pages:read", id),
+  searchPages: (query) => ipcRenderer.invoke("pages:search", query),
+  obsidianInstalled: () => ipcRenderer.invoke("pages:obsidian-installed"),
+  openInObsidian: (id) => ipcRenderer.invoke("pages:open-in-obsidian", id),
+  openLink: (url) => ipcRenderer.invoke("pages:open-link", url),
+  today: () => ipcRenderer.invoke("window:today"),
+  inbox: () => ipcRenderer.invoke("window:inbox"),
+  editDump: (name, text) => ipcRenderer.invoke("window:edit-dump", name, text),
+  deleteDump: (name) => ipcRenderer.invoke("window:delete-dump", name),
+  retryIngest: () => ipcRenderer.invoke("window:retry-ingest"),
+  onChange: (listener) => {
+    const forward = () => listener()
+    ipcRenderer.on("window:changed", forward)
+    return () => {
+      ipcRenderer.removeListener("window:changed", forward)
+    }
+  },
 }
 
 contextBridge.exposeInMainWorld("dumpling", dumpling)

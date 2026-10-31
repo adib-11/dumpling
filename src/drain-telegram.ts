@@ -34,10 +34,13 @@ export async function drainTelegram(
   ask?: Asker,
   media?: MediaReader,
   onUnsaved?: (notice: string | null) => void,
+  // Called after a batch saved at least one Dump and committed it.
+  onSaved?: () => void,
 ): Promise<number | undefined> {
   const updates = (await bot("getUpdates", { offset, timeout: longPollSeconds })) as Update[]
   const known = updates.length ? savedMessages(folder) : emptyKnown()
   const toDelete: number[] = []
+  let saved = false
   for (const update of updates) {
     const message = update.message
     if (message?.chat.id !== chat) continue
@@ -50,20 +53,24 @@ export async function drainTelegram(
     const outcome = await capture(bot, folder, message, known, media)
     if (outcome.status === "retry") {
       if (toDelete.length) await commitUnlessLocked(folder)
+      if (saved) onSaved?.()
       await deleteSaved(bot, chat, toDelete)
       onUnsaved?.(outcome.notice)
       return update.update_id
     }
+    if (outcome.status === "saved") saved = true
     if (outcome.status === "saved" || outcome.status === "duplicate") toDelete.push(message.message_id)
   }
   if (updates.length) await commitUnlessLocked(folder)
+  if (saved) onSaved?.()
   await deleteSaved(bot, chat, toDelete)
   onUnsaved?.(null)
   return updates.length ? updates[updates.length - 1].update_id + 1 : offset
 }
 
 // Long-polls the bot until stopped. A failed poll is retried; its batch stays unconfirmed, so nothing is lost.
-// onDrained runs after each successful poll.
+// onDrained runs after each successful poll. Stopping ends a waiting long poll at once, then confirms what was
+// saved, so a poll that starts next (another bot, another folder) does not save it again.
 export async function pollTelegram(
   bot: Bot,
   folder: string,
@@ -72,24 +79,41 @@ export async function pollTelegram(
   ask?: Asker,
   retryMs = 5000,
   onDrained: () => void = () => {},
-  options?: { media?: MediaReader; onUnsaved?: (notice: string | null) => void },
+  options?: { media?: MediaReader; onUnsaved?: (notice: string | null) => void; onSaved?: () => void },
 ): Promise<void> {
+  const stoppable = Object.assign(
+    (method: string, params?: Record<string, unknown>, signal?: AbortSignal) =>
+      bot(method, params, method === "getUpdates" ? (signal ?? stop) : signal),
+    { file: bot.file },
+  )
   let offset: number | undefined
   while (!stop.aborted) {
     let blocked = false
     try {
-      offset = await drainTelegram(bot, folder, chat, offset, ask, options?.media, (notice) => {
+      offset = await drainTelegram(stoppable, folder, chat, offset, ask, options?.media, (notice) => {
         blocked = notice !== null
         options?.onUnsaved?.(notice)
-      })
+      }, options?.onSaved)
       onDrained()
       // The failed update is still waiting, so getUpdates would return it at once. Wait before spending another call.
       if (blocked && !stop.aborted) await new Promise((resolve) => setTimeout(resolve, retryMs))
     } catch (error) {
+      if (stop.aborted) break
       console.error("drain-telegram: poll failed", error)
       await new Promise((resolve) => setTimeout(resolve, retryMs))
     }
   }
+  if (offset === undefined) return
+  await bot("getUpdates", { offset, timeout: 0 }).catch((error: unknown) => {
+    console.error(`drain-telegram: could not confirm the last batch: ${oneLine(error)}`)
+  })
+}
+
+// The error text can carry Telegram's reply, so line breaks are taken out before it is logged: a reply can then
+// never start a log line of its own.
+function oneLine(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error)
+  return text.replace(/[\r\n\u2028\u2029]+/g, " ")
 }
 
 // Telegram drops an update after 24 h. After 12 h a failed voice note or photo is saved as a placeholder instead, so the file id is not lost.

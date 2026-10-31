@@ -70,10 +70,9 @@ test("dark mode sets every colour light mode sets", () => {
   assert.deepEqual(colours.filter((name) => !(name in darkOwn)), [])
 })
 
-test("every window loads the theme and takes its colours from it", () => {
+test("the main window loads the theme, and no tab has a colour of its own", () => {
   assert.match(read("renderer/main.tsx"), /import "\.\.\/src\/theme\.css"/)
-  assert.match(read("src/ask.html"), /<link rel="stylesheet" href="theme\.css" \/>/)
-  for (const file of ["renderer/style.css", "src/ask.html", ...fs.readdirSync(path.join(root, "renderer")).filter((name) => name.endsWith(".tsx")).map((name) => `renderer/${name}`)]) {
+  for (const file of ["renderer/style.css", ...fs.readdirSync(path.join(root, "renderer")).filter((name) => name.endsWith(".tsx")).map((name) => `renderer/${name}`)]) {
     assert.doesNotMatch(read(file), /#(?:[0-9a-f]{3}){1,2}\b|rgba?\(|hsla?\(/i, `${file} has a colour of its own`)
   }
 })

@@ -3,7 +3,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
-import { enableLinuxAutostart } from "../src/login-item"
+import { disableLinuxAutostart, enableLinuxAutostart } from "../src/login-item"
 
 test("Linux login writes an XDG autostart entry that runs the AppImage", () => {
   const configHome = fs.mkdtempSync(path.join(os.tmpdir(), "xdg-config-"))
@@ -46,4 +46,16 @@ test("Linux login removes the autostart entry from before the rename", () => {
   enableLinuxAutostart(configHome, "/home/ada/Dumpling.AppImage")
 
   assert.deepEqual(fs.readdirSync(path.join(configHome, "autostart")), ["dumpling.desktop"])
+})
+
+test("turning Linux login off removes the autostart entry, and an absent one is fine", () => {
+  const configHome = fs.mkdtempSync(path.join(os.tmpdir(), "xdg-config-"))
+  enableLinuxAutostart(configHome, "/home/ada/Dumpling.AppImage")
+  fs.writeFileSync(path.join(configHome, "autostart", "other.desktop"), "[Desktop Entry]\n")
+
+  disableLinuxAutostart(configHome)
+  disableLinuxAutostart(configHome)
+
+  assert.deepEqual(fs.readdirSync(path.join(configHome, "autostart")), ["other.desktop"])
+  disableLinuxAutostart(fs.mkdtempSync(path.join(os.tmpdir(), "xdg-config-")))
 })

@@ -519,6 +519,21 @@ async function until(done: () => boolean): Promise<void> {
   assert.ok(done())
 }
 
+test("a stopped poll confirms what it saved, so a poll into another folder does not save it again", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  const other = fs.mkdtempSync(path.join(os.tmpdir(), "drain-telegram-"))
+  await createSecondBrain(other, templatesDir)
+  api.updates = [message(1, 10, at, { text: "saved before the folder changed" })]
+  const stop = new AbortController()
+
+  await pollTelegram(bot, folder, 111, stop.signal, undefined, 10, () => stop.abort())
+  await drainTelegram(bot, other, 111)
+
+  assert.deepEqual(inbox(folder), ["2026-10-21-140000-telegram.md"])
+  assert.deepEqual(inbox(other), [])
+})
+
 test("an /ask message is answered in the chat and never becomes a Dump", async (t) => {
   const { folder, api, bot } = await setup()
   t.after(api.close)
@@ -704,6 +719,36 @@ test("polling reports each successful drain, after its Dumps are saved", async (
   assert.equal(drained[0], 1)
 })
 
+test("a drain tells the caller when it saved Dumps, once per batch, and not for questions or repeats", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  const seen: string[][] = []
+  const onSaved = () => seen.push(inbox(folder))
+
+  api.updates = [message(1, 10, at, { text: "one" }), message(2, 11, at + 60, { text: "two" })]
+  await drainTelegram(bot, folder, 111, undefined, undefined, undefined, undefined, onSaved)
+  assert.deepEqual(seen, [["2026-10-21-140000-telegram.md", "2026-10-21-140100-telegram.md"]])
+
+  // The same messages again are duplicates, an /ask is a question, another chat is ignored.
+  api.updates = [message(1, 10, at, { text: "one" }), message(3, 12, at + 120, { text: "/ask what" }), message(4, 13, at, { text: "x" }, 222)]
+  await drainTelegram(bot, folder, 111, undefined, async () => "answer", undefined, undefined, onSaved)
+  assert.equal(seen.length, 1)
+})
+
+test("polling passes the saved-Dumps callback through", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  const stop = new AbortController()
+  t.after(() => stop.abort())
+  let saved = 0
+  api.updates = [message(1, 10, at, { text: "hello" })]
+
+  void pollTelegram(bot, folder, 111, stop.signal, undefined, 10, undefined, { onSaved: () => saved++ })
+
+  await until(() => saved > 0)
+  assert.equal(saved, 1)
+})
+
 test("during an Ingest or Undo a drain saves the Dump but leaves git alone", async (t) => {
   const { folder, api, bot } = await setup()
   t.after(api.close)
@@ -716,4 +761,30 @@ test("during an Ingest or Undo a drain saves the Dump but leaves git alone", asy
   assert.deepEqual(inbox(folder), ["2026-10-21-140000-telegram.md"])
   const status = await exec(["status", "--porcelain"], folder)
   assert.equal(status.stdout, "?? inbox/2026-10-21-140000-telegram.md\n")
+})
+
+test("a failed confirm after a stopped poll is logged on one line, with its message", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  api.updates = [message(1, 10, at, { text: "saved before the stop" })]
+  const stop = new AbortController()
+  const logged: unknown[][] = []
+  t.mock.method(console, "error", (...args: unknown[]) => logged.push(args))
+  const failing = Object.assign(
+    async (method: string, params?: Record<string, unknown>, signal?: AbortSignal) => {
+      if (method === "getUpdates" && params?.timeout === 0) {
+        throw new Error("Telegram getUpdates failed: Bad Gateway\nFORGED LOG LINE\r\nanother\u2028one")
+      }
+      return bot(method, params, signal)
+    },
+    { file: bot.file },
+  )
+
+  await pollTelegram(failing, folder, 111, stop.signal, undefined, 10, () => stop.abort())
+
+  assert.deepEqual(logged, [
+    [
+      "drain-telegram: could not confirm the last batch: Telegram getUpdates failed: Bad Gateway FORGED LOG LINE another one",
+    ],
+  ])
 })

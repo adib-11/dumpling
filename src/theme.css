@@ -98,6 +98,7 @@ label {
 
 input[type="text"],
 input[type="password"],
+input[type="search"],
 textarea {
   font: inherit;
   color: var(--text);
@@ -107,7 +108,16 @@ textarea {
   padding: 6px var(--space-2);
 }
 
-input[type="radio"] {
+textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+}
+
+input[type="radio"],
+input[type="checkbox"] {
   accent-color: var(--accent);
 }
 
