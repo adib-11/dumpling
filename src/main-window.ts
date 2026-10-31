@@ -1,5 +1,6 @@
 // What the main window shows (spec §4). First run is a folder, then the Engine; the phone is never a gate.
-// Shared by the main process, the preload and the renderer, so it imports nothing.
+// Shared by the main process, the preload and the renderer, so it imports types only.
+import type { PageGroup, PageHit, PageView } from "./page-view"
 
 export type WindowStep = "folder" | "engine" | "today"
 
@@ -38,4 +39,13 @@ export type DumplingApi = {
   waitStart(): Promise<Outcome>
   backupRemote(): Promise<boolean>
   saveRemote(url: string): Promise<Outcome>
+  // The Pages tab. All of it reads; no call changes a Page.
+  pages(): Promise<PageGroup[]>
+  // null when `id` is not a Page.
+  page(id: string): Promise<PageView | null>
+  searchPages(query: string): Promise<PageHit[]>
+  obsidianInstalled(): Promise<boolean>
+  openInObsidian(id: string): Promise<void>
+  // Opens an http or https link in the browser; anything else is ignored.
+  openLink(url: string): Promise<void>
 }

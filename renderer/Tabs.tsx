@@ -1,6 +1,7 @@
 import { useRef, type KeyboardEvent, type ReactNode } from "react"
 import { tabs, type Tab } from "../src/main-window"
 import { ConnectPhone } from "./ConnectPhone"
+import { Pages } from "./Pages"
 import { Settings } from "./Settings"
 
 const labels: Record<Tab, string> = {
@@ -35,7 +36,7 @@ export function Tabs({ tab, onTab, connectPhone, onConnected }: Props) {
       </>
     ),
     inbox: <p className="empty">Dumps waiting for the next Ingest show here.</p>,
-    pages: <p className="empty">Your Pages show here.</p>,
+    pages: <Pages active={tab === "pages"} />,
     ask: <p className="empty">Ask… in the menu opens the Ask window.</p>,
     settings: <Settings />,
   }

@@ -67,7 +67,9 @@ If FUSE is unavailable, `APPIMAGE_EXTRACT_AND_RUN=1 ./Dumpling-*-x86_64.AppImage
 
 The app sits in the menu bar on Mac and in the system tray on Windows and Linux. The menu shows Open Dumpling, the folder, Ingest now, Undo last Ingest, Ask…, Backup remote…, Report a problem, and Quit.
 
-Open Dumpling opens the main window, with five tabs: Today, Inbox, Pages, Ask and Settings. While it is open the app also has a Dock icon (Mac) or a taskbar entry (Windows, Linux); closing it leaves the app in the menu bar or tray only. Inbox, Pages and Ask are empty for now. Settings changes the Engine and the backup remote.
+Open Dumpling opens the main window, with five tabs: Today, Inbox, Pages, Ask and Settings. While it is open the app also has a Dock icon (Mac) or a taskbar entry (Windows, Linux); closing it leaves the app in the menu bar or tray only. Inbox and Ask are empty for now. Settings changes the Engine and the backup remote.
+
+The Pages tab lists the Pages in `vault/wiki/` by kind (people, works, topics, projects, places, and your own Me page) and opens one as rendered markdown. A `[[wiki link]]` opens the Page it names; a link to a Page that does not exist is shown in red with a dashed underline, and a link to a Dump or to `log` or `open-threads` is shown as plain text. Each Page ends with the Pages that link to it. Search takes words, finds the Pages that hold all of them in their name, aliases, summary or text, and reads the files each time; the code marks where an index would take over at thousands of Pages. Open in Obsidian shows only when the system has an app registered for `obsidian://` links, and needs `vault/` opened in Obsidian as a vault. The tab only reads: nothing in it changes a Page, and a Page's HTML, images and non-web links are never drawn or loaded.
 
 Backup remote… opens Settings, which takes a git remote URL. After each Ingest the app pushes to it, last and best-effort. A failed push rolls nothing back: the menu shows "Backup push failed", the app notifies once, and the next Ingest pushes again. Save a blank URL to stop pushing.
 

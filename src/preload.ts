@@ -28,6 +28,12 @@ const dumpling: DumplingApi = {
   waitStart: () => ipcRenderer.invoke("window:wait-start"),
   backupRemote: () => ipcRenderer.invoke("window:backup-remote"),
   saveRemote: (url) => ipcRenderer.invoke("window:save-remote", url),
+  pages: () => ipcRenderer.invoke("pages:list"),
+  page: (id) => ipcRenderer.invoke("pages:read", id),
+  searchPages: (query) => ipcRenderer.invoke("pages:search", query),
+  obsidianInstalled: () => ipcRenderer.invoke("pages:obsidian-installed"),
+  openInObsidian: (id) => ipcRenderer.invoke("pages:open-in-obsidian", id),
+  openLink: (url) => ipcRenderer.invoke("pages:open-link", url),
 }
 
 contextBridge.exposeInMainWorld("dumpling", dumpling)
