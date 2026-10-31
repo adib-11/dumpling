@@ -1,5 +1,8 @@
 // What the main window shows (spec §4). First run is a folder, then the Engine; the phone is never a gate.
-// Shared by the main process, the preload and the renderer, so it imports nothing.
+// Shared by the main process, the preload and the renderer, so it imports nothing but types.
+
+import type { InboxDump } from "./inbox"
+import type { TodayView } from "./today"
 
 export type WindowStep = "folder" | "engine" | "today"
 
@@ -38,4 +41,13 @@ export type DumplingApi = {
   waitStart(): Promise<Outcome>
   backupRemote(): Promise<boolean>
   saveRemote(url: string): Promise<Outcome>
+  // null before a folder is chosen.
+  today(): Promise<TodayView | null>
+  inbox(): Promise<InboxDump[]>
+  editDump(name: string, text: string): Promise<Outcome>
+  deleteDump(name: string): Promise<Outcome>
+  // Runs Ingest now and resolves when it ends. A failed run shows on Today; only a run that could not start is an error.
+  retryIngest(): Promise<Outcome>
+  // Runs when a Dump arrives or changes, or an Ingest or Undo ends. Returns the way to stop listening.
+  onChange(listener: () => void): () => void
 }

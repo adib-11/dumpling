@@ -28,6 +28,18 @@ const dumpling: DumplingApi = {
   waitStart: () => ipcRenderer.invoke("window:wait-start"),
   backupRemote: () => ipcRenderer.invoke("window:backup-remote"),
   saveRemote: (url) => ipcRenderer.invoke("window:save-remote", url),
+  today: () => ipcRenderer.invoke("window:today"),
+  inbox: () => ipcRenderer.invoke("window:inbox"),
+  editDump: (name, text) => ipcRenderer.invoke("window:edit-dump", name, text),
+  deleteDump: (name) => ipcRenderer.invoke("window:delete-dump", name),
+  retryIngest: () => ipcRenderer.invoke("window:retry-ingest"),
+  onChange: (listener) => {
+    const forward = () => listener()
+    ipcRenderer.on("window:changed", forward)
+    return () => {
+      ipcRenderer.removeListener("window:changed", forward)
+    }
+  },
 }
 
 contextBridge.exposeInMainWorld("dumpling", dumpling)
