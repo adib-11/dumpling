@@ -8,8 +8,8 @@ const indexMd = ["# Index", ""]
   .concat(pageKinds.flatMap((kind) => [`## ${kind}`, "", ...indexTable]))
   .join("\n")
 
-const gitName = "Second Brain"
-const gitEmail = "second-brain@localhost"
+const gitName = "Dumpling"
+const gitEmail = "dumpling@localhost"
 
 const meMd = [
   "---",
@@ -31,7 +31,7 @@ const meMd = [
 export function defaultSecondBrainFolder(homeDir: string, documentsDir: string): string {
   const documentsIsHome = path.resolve(documentsDir) === path.resolve(homeDir)
   const base = documentsIsHome ? path.join(homeDir, "Documents") : documentsDir
-  return path.join(base, "Second Brain")
+  return path.join(base, "Dumpling")
 }
 
 export async function createSecondBrain(folder: string, templatesDir: string): Promise<{ commit: string }> {

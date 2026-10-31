@@ -1,6 +1,6 @@
-# Second Brain
+# Dumpling
 
-A tray app for a second brain on your own computer. It is free and open source. There is no server and no support promise.
+Dumpling: a second brain on your computer. It is a tray app. It is free and open source. There is no server and no support promise.
 
 Send it a thought, a link, a voice note or a photo from Telegram on your phone. Once a day it files them into a wiki of markdown pages on your computer, written by a free model, with no key or account, or by a model on your own key. Ask it questions with `/ask` and it answers from what you filed.
 
@@ -8,9 +8,9 @@ Send it a thought, a link, a voice note or a photo from Telegram on your phone. 
 
 You need a Mac (Apple silicon), Windows or Linux computer that is awake at least once a day, and Telegram on your phone. The free Engine needs nothing else. With your own OpenAI API key instead, expect about $1 to $2 a month in OpenAI cost for 10 Dumps a day; `.state/runs.tsv` in your folder keeps the cost of each Ingest.
 
-1. **Download.** Open the [latest release](https://github.com/adib-11/second-brain-app/releases/latest) and download the file for your system (see the table below).
+1. **Download.** Open the [latest release](https://github.com/adib-11/dumpling/releases/latest) and download the file for your system (see the table below).
 2. **Open it.** The app is unsigned, so your system warns you once. Follow the steps for [Mac](#mac), [Windows](#windows) or [Linux](#linux). The app then sits in the menu bar (Mac) or system tray (Windows, Linux), and a setup window opens.
-3. **Choose a folder.** Keep the default, `Documents/Second Brain`, and choose Create.
+3. **Choose a folder.** Keep the default, `Documents/Dumpling`, and choose Create.
 4. **Choose the Engine.** Keep Start free and choose Continue. Or choose Use my own key, pick the provider, then Get a key to open its key page, create a key, paste it, and choose Save key. The app checks it with one call to that provider and keeps it in your system's keychain.
 5. **Make a Telegram bot.** Choose Open BotFather, send it `/newbot` in Telegram, pick any name, paste the token it gives you, and choose Check.
 6. **Send `/start` to your new bot** from your phone. The bot replies "Connected". Only this chat can send to it.
@@ -24,13 +24,13 @@ That is all. The rest of this page is detail.
 
 | System | File | After download |
 | --- | --- | --- |
-| Mac (Apple silicon) | `Second-Brain-<version>-arm64.dmg` (or the `.zip`) | Privacy & Security → Open Anyway |
-| Windows | `Second-Brain-<version>-x64.exe` | SmartScreen → More info → Run anyway |
-| Linux | `Second-Brain-<version>-x86_64.AppImage` | `chmod +x`, then run it |
+| Mac (Apple silicon) | `Dumpling-<version>-arm64.dmg` (or the `.zip`) | Privacy & Security → Open Anyway |
+| Windows | `Dumpling-<version>-x64.exe` | SmartScreen → More info → Run anyway |
+| Linux | `Dumpling-<version>-x86_64.AppImage` | `chmod +x`, then run it |
 
 ### Mac
 
-1. Open the dmg and drag Second Brain to Applications. (Or unzip the zip and move the app to Applications.)
+1. Open the dmg and drag Dumpling to Applications. (Or unzip the zip and move the app to Applications.)
 2. Open the app. macOS says it cannot verify the developer.
 3. Open System Settings → Privacy & Security, and choose Open Anyway.
 4. Open the app again and confirm.
@@ -51,8 +51,8 @@ A screenshot of the SmartScreen prompt is not in this README yet.
 ### Linux
 
 ```sh
-chmod +x Second-Brain-*-x86_64.AppImage
-./Second-Brain-*-x86_64.AppImage
+chmod +x Dumpling-*-x86_64.AppImage
+./Dumpling-*-x86_64.AppImage
 ```
 
 On GNOME the tray icon uses AppIndicator. The AppImage ships `libappindicator`. Install and enable the AppIndicator extension (Ubuntu's "Ubuntu AppIndicators" extension, or "AppIndicator and KStatusNotifierItem Support"). Plain Ubuntu also needs FUSE (`fusermount` from the `fuse` package, and `libfuse2`) before a normal AppImage mount will start:
@@ -61,15 +61,17 @@ On GNOME the tray icon uses AppIndicator. The AppImage ships `libappindicator`. 
 sudo apt install fuse libfuse2
 ```
 
-If FUSE is unavailable, `APPIMAGE_EXTRACT_AND_RUN=1 ./Second-Brain-*-x86_64.AppImage` still starts it.
+If FUSE is unavailable, `APPIMAGE_EXTRACT_AND_RUN=1 ./Dumpling-*-x86_64.AppImage` still starts it.
 
 ## First launch
 
-The app sits in the menu bar on Mac and in the system tray on Windows and Linux. The menu shows the folder, Ingest now, Undo last Ingest, Ask…, Connect Telegram… until a bot is connected, Backup remote…, and Quit.
+The app sits in the menu bar on Mac and in the system tray on Windows and Linux. The menu shows the folder, Ingest now, Undo last Ingest, Ask…, Connect Telegram… until a bot is connected, Backup remote…, Report a problem, and Quit.
 
 Backup remote… takes a git remote URL. After each Ingest the app pushes to it, last and best-effort. A failed push rolls nothing back: the menu shows "Backup push failed", the app notifies once, and the next Ingest pushes again. Save a blank URL to stop pushing.
 
-The first window asks for a folder, then the Engine: Start free (selected) or Use my own key. Start free runs a free model through opencode with no key; the Dumps go to opencode's servers in the US and EU, and the app offers only models whose terms say they keep no data and do not train on it (`freeModels` in `src/engine.ts`). Use my own key sends the Dumps to the provider picked; the wizard checks the key with one call to that provider and stores it in the OS keychain. The Key Engines are OpenAI, Gemini, Anthropic and OpenRouter (`keyProviders` in `src/engine.ts`), each with a default model and a cost table; setup offers a provider only once its default model has passed the v1 fixture set. Today that is OpenAI and Gemini (`google/gemini-3.5-flash-lite`, 57/58); Anthropic and OpenRouter wait for their runs. The key reaches opencode in the provider's environment variable only, never in its arguments, a log or the folder. The default folder is `Documents/Second Brain`. Create makes that folder, without a git install on the computer (git is bundled):
+Report a problem opens a new GitHub issue on the bug report form, filled in with the app version, the system and the last failed Ingest from `.state/runs.tsv` (its time and reason, with the folder path replaced by `<folder>`). It carries no Dump or Page text. Nothing is sent until you submit the issue on GitHub.
+
+The first window asks for a folder, then the Engine: Start free (selected) or Use my own key. Start free runs a free model through opencode with no key; the Dumps go to opencode's servers in the US and EU, and the app offers only models whose terms say they keep no data and do not train on it (`freeModels` in `src/engine.ts`). Use my own key sends the Dumps to the provider picked; the wizard checks the key with one call to that provider and stores it in the OS keychain. The Key Engines are OpenAI, Gemini, Anthropic and OpenRouter (`keyProviders` in `src/engine.ts`), each with a default model and a cost table; setup offers a provider only once its default model has passed the v1 fixture set. Today that is OpenAI and Gemini (`google/gemini-3.5-flash-lite`, 57/58); Anthropic and OpenRouter wait for their runs. The key reaches opencode in the provider's environment variable only, never in its arguments, a log or the folder. The default folder is `Documents/Dumpling`. Create makes that folder, without a git install on the computer (git is bundled):
 
 - `inbox/`
 - `vault/raw/`
@@ -96,6 +98,12 @@ Ingest also runs by itself once a day: at 03:00, or at the first wake after it i
 
 The app does not update itself. Once a day it asks GitHub for the latest release. When a newer one exists, the tray menu shows "New version x.y.z…", which opens the release page. Download and install it as before; your folder, key and bot stay as they are.
 
+### From Second Brain to Dumpling
+
+The app was called Second Brain before v0.2. On its first start, Dumpling moves the settings of a Second Brain install (`config.json`, the key and the bot token) from the old settings folder, `second-brain-app`, to its own, `Dumpling`. The key and token are sealed again under the new name; on a Mac the system may ask once whether Dumpling may use the "second-brain-app Safe Storage" keychain item. Choose Allow. Your second brain folder does not move, and Dumpling keeps using it. If the keychain refuses, the old folder keeps everything, the app says which secret did not move, and setup asks for it again.
+
+Then delete the Second Brain app. On a Mac, also remove it from System Settings → General → Login Items; Windows and Linux drop its login entry for you.
+
 ## Templates
 
 `templates/` is copied from [adib-11/second-brain](https://github.com/adib-11/second-brain) at the commit in `templates/SOURCE_COMMIT`. The app owns those files inside each second brain. `tests/fixtures/ingest` is the v1 fixture set from that repo, with no keys or personal notes. `node scripts/ingest-fixtures.js <provider/model>` runs it on one model, after `npm run build`, and prints the pass rate; a Key Engine model takes its key from that provider's environment variable (`OPENAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `ANTHROPIC_API_KEY` or `OPENROUTER_API_KEY`).
@@ -120,3 +128,7 @@ npm start
 ### Releasing
 
 The release workflow builds unsigned installers and attaches them to a draft GitHub Release. It runs when a `v*` tag is pushed, and it can also be started by hand (Actions → Release → Run workflow, with a tag such as `v0.1.0`). The Mac build is ad-hoc signed so macOS does not call it damaged. Bump `version` in `package.json` to match the tag, since the update check compares the two. Publishing the draft makes it the latest release, which the app links to.
+
+### Renaming the repo
+
+The app names `adib-11/dumpling` in the update check and in Report a problem, and Report a problem needs the bug report form on that repo's default branch. Rename `adib-11/second-brain-app` to `dumpling` (Settings → General → Repository name) right after the rename change is merged to `main`, and before tagging any release built from it. Until then, a build from `main` finds no release and its Report a problem page is a 404. GitHub redirects the old name, so installs from before the rename keep finding releases; never create a new repo called `second-brain-app`, since that ends the redirect. After the rename, run `git remote set-url origin https://github.com/adib-11/dumpling.git` in each clone.

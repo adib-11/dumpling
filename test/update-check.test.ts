@@ -17,7 +17,7 @@ test("a newer version compares by number, not by text", () => {
 })
 
 test("the app links to a newer GitHub release, and stays quiet otherwise", async () => {
-  const url = "https://github.com/adib-11/second-brain-app/releases/tag/v0.2.0"
+  const url = "https://github.com/adib-11/dumpling/releases/tag/v0.2.0"
   assert.deepEqual(await newerRelease("0.1.0", latest({ tag_name: "v0.2.0", html_url: url })), {
     version: "0.2.0",
     url,
@@ -31,14 +31,26 @@ test("the app links to a newer GitHub release, and stays quiet otherwise", async
   assert.equal(await newerRelease("0.1.0", offline), null)
 })
 
+test("the update check asks the adib-11/dumpling repo", async () => {
+  let asked = ""
+  const fetchFn = (async (input: string | URL | Request) => {
+    asked = String(input)
+    return new Response("{}", { status: 404 })
+  }) as typeof fetch
+  await newerRelease("0.1.0", fetchFn)
+  assert.equal(asked, "https://api.github.com/repos/adib-11/dumpling/releases/latest")
+})
+
 test("the tray shows a new version above Quit", () => {
   assert.deepEqual(trayMenuItems(null, false, false, null, "0.2.0"), [
     { label: "Choose folder…", action: "setup", enabled: true },
     { label: "New version 0.2.0…", action: "update", enabled: true },
+    { label: "Report a problem", action: "report", enabled: true },
     { label: "Quit", action: "quit", enabled: true },
   ])
-  assert.deepEqual(trayMenuItems("/home/ada/Second Brain", true, false, null, "0.2.0").slice(-2), [
+  assert.deepEqual(trayMenuItems("/home/ada/Dumpling", true, false, null, "0.2.0").slice(-3), [
     { label: "New version 0.2.0…", action: "update", enabled: true },
+    { label: "Report a problem", action: "report", enabled: true },
     { label: "Quit", action: "quit", enabled: true },
   ])
 })

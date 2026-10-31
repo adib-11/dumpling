@@ -1,10 +1,11 @@
 {
-  "name": "second-brain-app",
+  "name": "dumpling",
+  "productName": "Dumpling",
   "version": "0.1.0",
   "private": true,
-  "description": "Shareable second brain tray app",
+  "description": "Dumpling: a second brain on your computer",
   "author": "adib-11",
-  "desktopName": "second-brain.desktop",
+  "desktopName": "dumpling.desktop",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc && node scripts/copy-static.js",
@@ -17,13 +18,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/adib-11/second-brain-app"
+    "url": "https://github.com/adib-11/dumpling"
   },
   "build": {
-    "appId": "app.second-brain",
-    "productName": "Second Brain",
-    "executableName": "second-brain",
-    "artifactName": "Second-Brain-${version}-${arch}.${ext}",
+    "appId": "app.dumpling",
+    "executableName": "dumpling",
+    "artifactName": "Dumpling-${version}-${arch}.${ext}",
     "directories": {
       "output": "release"
     },

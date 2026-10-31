@@ -11,6 +11,7 @@ import {
   shell,
   Tray,
 } from "electron"
+import { spawn } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { acceptApiKey, keyFileName, loadApiKey } from "./api-key"
@@ -28,9 +29,11 @@ import { pollTelegram, type Asker } from "./drain-telegram"
 import { engineMedia, freeEngine, isProvider, keyEngine, keyProviders, offeredProviders, type Engine, type Provider } from "./engine"
 import { ytDlpAt } from "./fetch-link"
 import { backupRemote, hideCredentials, setBackupRemote } from "./git-remote"
-import { ingestNow, lastIngestStatus, spawnOpencode, undoLastIngest, type IngestResult } from "./ingest-now"
+import { ingestNow, lastIngestError, lastIngestStatus, spawnOpencode, undoLastIngest, type IngestResult } from "./ingest-now"
 import { enableLinuxAutostart } from "./login-item"
+import { problemReportUrl, systemName } from "./report-problem"
 import { claimDailyIngest, readDrain, rememberDrain } from "./schedule"
+import { isSecretName, moveSettings, oldAppName } from "./settings-move"
 import { connectBot, ingestBot, telegramBot } from "./telegram"
 import { trayHealth, trayMenuItems, type TrayHealth, type TrayMenuItem } from "./tray-menu"
 import { newerRelease, type NewRelease } from "./update-check"
@@ -58,6 +61,84 @@ function keyFile(provider: Provider): string {
 
 function tokenPath(): string {
   return path.join(app.getPath("userData"), "telegram-token")
+}
+
+// The child process that opens the secrets sealed under the old app name (settings-move.ts) gets this flag
+// and the file names, comma-separated. It prints them opened, as JSON, to its stdout pipe and exits.
+const readOldFlag = "--read-old-settings="
+
+function oldSettingsFolder(): string {
+  return path.join(app.getPath("appData"), oldAppName)
+}
+
+// safeStorage seals with a key kept per app name (and, on Windows, in the settings folder's Local State), so
+// only a process named second-brain-app, on the old settings folder, can open the old secrets.
+function readOldSecrets(names: string[]): Promise<Record<string, string>> {
+  const env = { ...process.env }
+  delete env.ELECTRON_RUN_AS_NODE
+  const appArgs = app.isPackaged ? [] : [app.getAppPath()]
+  const child = spawn(process.execPath, [...appArgs, `${readOldFlag}${names.join(",")}`], {
+    env,
+    stdio: ["ignore", "pipe", "ignore"],
+    windowsHide: true,
+  })
+  // A keychain prompt waits for the Owner, so the limit is generous.
+  const timer = setTimeout(() => child.kill(), 5 * 60 * 1000)
+  return new Promise((resolve, reject) => {
+    const out: Buffer[] = []
+    child.stdout?.on("data", (chunk: Buffer) => out.push(chunk))
+    child.on("error", reject)
+    child.on("close", (code) => {
+      clearTimeout(timer)
+      if (code !== 0) return reject(new Error(`exited ${code}`))
+      try {
+        resolve(JSON.parse(Buffer.concat(out).toString("utf8")) as Record<string, string>)
+      } catch (error) {
+        reject(error)
+      }
+    })
+  })
+}
+
+// The child process's whole run. It never takes the single instance lock, opens a window or a tray.
+function printOldSecrets(names: string[]): void {
+  app.setName(oldAppName)
+  app.setPath("userData", oldSettingsFolder())
+  void app.whenReady().then(() => {
+    if (process.platform === "darwin") app.dock?.hide()
+    const opened: Record<string, string> = {}
+    for (const name of names.filter(isSecretName)) {
+      try {
+        opened[name] = safeStorage.decryptString(fs.readFileSync(path.join(oldSettingsFolder(), name)))
+      } catch {
+        // Left out: the parent names it as not moved.
+      }
+    }
+    process.stdout.write(JSON.stringify(opened), () => app.exit(0))
+  })
+}
+
+// Once, on the first start after the rename (spec §7). The second brain folder stays where it is.
+async function moveOldSettings(): Promise<void> {
+  try {
+    const result = await moveSettings({
+      from: oldSettingsFolder(),
+      to: app.getPath("userData"),
+      readOld: readOldSecrets,
+      cipher: keychainReady() ? safeStorage : null,
+    })
+    if (!result.moved) return
+    // An old login item would start the Second Brain app as well. Windows names it by the old app id.
+    if (process.platform === "win32" && app.isPackaged) {
+      app.setLoginItemSettings({ openAtLogin: false, name: "app.second-brain" })
+    }
+    const lost = result.lost.map((name) => (name === "telegram-token" ? "bot token" : "key"))
+    if (lost.length > 0) {
+      notify(`Moved the settings from Second Brain, but not the ${[...new Set(lost)].join(" or ")}. Add it again in setup.`)
+    }
+  } catch (error) {
+    console.error("Could not move the settings from Second Brain.", error)
+  }
 }
 
 function keychainReady(): boolean {
@@ -178,7 +259,7 @@ function dailyIngest(): void {
 function notify(body: string, offer?: "add-key"): void {
   if (!Notification.isSupported()) return
   const notice = new Notification({
-    title: "Second Brain",
+    title: "Dumpling",
     body,
     ...(offer && { actions: [{ type: "button" as const, text: "Add a key" }] }),
   })
@@ -271,7 +352,7 @@ function openWizard(step: "remote" | "key" | null = null): void {
     height: 420,
     resizable: false,
     autoHideMenuBar: true,
-    title: "Second Brain",
+    title: "Dumpling",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -347,7 +428,9 @@ function toMenuItem(item: TrayMenuItem): Electron.MenuItemConstructorOptions {
                     ? () => {
                         if (newRelease) void shell.openExternal(newRelease.url)
                       }
-                    : undefined,
+                    : item.action === "report"
+                      ? () => reportProblem()
+                      : undefined,
   }
 }
 
@@ -362,14 +445,14 @@ function rebuildMenu(): void {
 // A voice note or photo waiting in the chat is named first; it is the thing the Owner can act on now.
 function trayTip(): string {
   if (unsaved) return unsaved
-  if (health === "failing") return "Second Brain: the last Ingest failed"
-  if (health === "not-drained") return "Second Brain: Telegram not drained for 20 h"
-  return "Second Brain"
+  if (health === "failing") return "Dumpling: the last Ingest failed"
+  if (health === "not-drained") return "Dumpling: Telegram not drained for 20 h"
+  return "Dumpling"
 }
 
 function createTray(): void {
   tray = new Tray(trayImage("ok"))
-  tray.setToolTip("Second Brain")
+  tray.setToolTip("Dumpling")
   if (process.platform !== "darwin") {
     tray.on("click", () => tray?.popUpContextMenu())
   }
@@ -413,6 +496,26 @@ async function runIngest(fromTray: boolean): Promise<void> {
   refreshHealth()
 }
 
+// The issue carries the version, the system and the last Ingest error, and no Dump or Page text.
+function reportProblem(): void {
+  const folder = readBrainFolder(configPath())
+  let lastError: ReturnType<typeof lastIngestError> = null
+  try {
+    lastError = folder ? lastIngestError(folder) : null
+  } catch (error) {
+    console.error("Could not read the last Ingest error.", error)
+  }
+  void shell.openExternal(
+    problemReportUrl({
+      version: app.getVersion(),
+      system: systemName(process.platform, process.getSystemVersion(), process.arch),
+      lastError,
+      folder,
+      home: app.getPath("home"),
+    }),
+  )
+}
+
 async function checkForUpdate(): Promise<void> {
   const found = await newerRelease(app.getVersion(), fetch)
   if (found?.version === newRelease?.version) return
@@ -445,7 +548,7 @@ function showPush(result: IngestResult): void {
   if (!result.push.ok) {
     console.error(`Backup push failed: ${result.push.error}`)
     if (!backupFailed && Notification.isSupported()) {
-      new Notification({ title: "Second Brain", body: "Backup push failed. Ingest still filed everything." }).show()
+      new Notification({ title: "Dumpling", body: "Backup push failed. Ingest still filed everything." }).show()
     }
   }
   backupFailed = !result.push.ok
@@ -453,7 +556,7 @@ function showPush(result: IngestResult): void {
 }
 
 function start(): void {
-  if (process.platform === "win32") app.setAppUserModelId("app.second-brain")
+  if (process.platform === "win32") app.setAppUserModelId("app.dumpling")
 
   const gotLock = app.requestSingleInstanceLock()
   if (!gotLock) {
@@ -596,7 +699,8 @@ function start(): void {
     }
   })
 
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
+    await moveOldSettings()
     enableLogin()
     if (process.platform === "darwin") app.dock?.hide()
     createTray()
@@ -619,7 +723,9 @@ function start(): void {
   })
 }
 
-start()
+const oldSecrets = process.argv.find((arg) => arg.startsWith(readOldFlag))
+if (oldSecrets !== undefined) printOldSecrets(oldSecrets.slice(readOldFlag.length).split(","))
+else start()
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback

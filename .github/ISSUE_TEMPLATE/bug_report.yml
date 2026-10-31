@@ -1,0 +1,37 @@
+name: Bug report
+description: Something in Dumpling broke. Report a problem in the app's menu fills in the first three fields.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste the text of a Dump or a Page, a key or a bot token. This issue is public.
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: In the menu, Report a problem fills this in. Otherwise it is in the file name you downloaded.
+      placeholder: 0.2.0
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: The system, its version and the chip.
+      placeholder: macOS 15.2 arm64
+    validations:
+      required: true
+  - type: textarea
+    id: ingest-error
+    attributes:
+      label: Last Ingest error
+      description: The time and reason of the last failed Ingest, or None. Report a problem fills this in from .state/runs.tsv.
+      render: text
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true

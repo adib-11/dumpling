@@ -1,6 +1,8 @@
+import { repo } from "./repo"
+
 // The app only links to a newer GitHub release. Unsigned Mac builds can't use Squirrel, so there is no
 // auto-update (spec §6). /releases/latest skips drafts and prereleases.
-const latestUrl = "https://api.github.com/repos/adib-11/second-brain-app/releases/latest"
+const latestUrl = `https://api.github.com/repos/${repo}/releases/latest`
 
 export type NewRelease = { version: string; url: string }
 

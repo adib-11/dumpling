@@ -12,8 +12,8 @@ import { pushBackup, type PushResult } from "./git-remote"
 import { type Bot } from "./telegram"
 import { writeIndex } from "./write-index"
 
-const gitName = "Second Brain"
-const gitEmail = "second-brain@localhost"
+const gitName = "Dumpling"
+const gitEmail = "dumpling@localhost"
 const chunkSize = 25
 // Per agent run. Node timers stand still while the computer sleeps, so this is awake time, as in bin/ingest.
 const chunkTimeoutMs = 20 * 60 * 1000
@@ -349,6 +349,16 @@ export function lastIngestStatus(brain: string): string | null {
   if (!fs.existsSync(file)) return null
   const last = fs.readFileSync(file, "utf8").trimEnd().split("\n").at(-1) ?? ""
   return last.startsWith("when\t") ? null : (last.split("\t")[1] ?? null)
+}
+
+// The newest failed run in .state/runs.tsv, with its time, or null when no run failed. The reason is the
+// app's own words (runner exited 3, timed out), never a Dump's or a Page's text.
+export function lastIngestError(brain: string): { when: string; reason: string } | null {
+  const file = path.join(brain, ".state", "runs.tsv")
+  if (!fs.existsSync(file)) return null
+  const runs = fs.readFileSync(file, "utf8").trimEnd().split("\n").slice(1).reverse()
+  const failed = runs.map((line) => line.split("\t")).find((fields) => fields[1] === "failed")
+  return failed ? { when: failed[0], reason: failed[6] ?? "" } : null
 }
 
 // Returns the stash's name, or nothing when there was nothing to stash.
