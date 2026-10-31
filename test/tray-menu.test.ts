@@ -2,54 +2,59 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { trayHealth, trayMenuItems } from "../src/tray-menu"
 
-test("the tray menu quits, and offers setup until a folder is chosen", () => {
+test("the tray menu quits, reports a problem, and offers setup until a folder is chosen", () => {
   assert.deepEqual(trayMenuItems(null, false), [
     { label: "Choose folder…", action: "setup", enabled: true },
+    { label: "Report a problem", action: "report", enabled: true },
     { label: "Quit", action: "quit", enabled: true },
   ])
 
-  assert.deepEqual(trayMenuItems("/home/ada/Documents/Second Brain", true), [
-    { label: "/home/ada/Documents/Second Brain", enabled: false },
+  assert.deepEqual(trayMenuItems("/home/ada/Documents/Dumpling", true), [
+    { label: "/home/ada/Documents/Dumpling", enabled: false },
     { label: "Ingest now", action: "ingest", enabled: true },
     { label: "Undo last Ingest", action: "undo", enabled: true },
     { label: "Ask…", action: "ask", enabled: true },
     { label: "Backup remote…", action: "remote", enabled: true },
+    { label: "Report a problem", action: "report", enabled: true },
     { label: "Quit", action: "quit", enabled: true },
   ])
 })
 
 test("the tray shows a voice note that could not be transcribed", () => {
-  assert.deepEqual(trayMenuItems("/home/ada/Documents/Second Brain", true, false, "Voice note not transcribed"), [
-    { label: "/home/ada/Documents/Second Brain", enabled: false },
+  assert.deepEqual(trayMenuItems("/home/ada/Documents/Dumpling", true, false, "Voice note not transcribed"), [
+    { label: "/home/ada/Documents/Dumpling", enabled: false },
     { label: "Voice note not transcribed", enabled: false },
     { label: "Ingest now", action: "ingest", enabled: true },
     { label: "Undo last Ingest", action: "undo", enabled: true },
     { label: "Ask…", action: "ask", enabled: true },
     { label: "Backup remote…", action: "remote", enabled: true },
+    { label: "Report a problem", action: "report", enabled: true },
     { label: "Quit", action: "quit", enabled: true },
   ])
 })
 
 test("the tray menu offers to connect Telegram until a chat is connected", () => {
-  assert.deepEqual(trayMenuItems("/home/ada/Documents/Second Brain", false), [
-    { label: "/home/ada/Documents/Second Brain", enabled: false },
+  assert.deepEqual(trayMenuItems("/home/ada/Documents/Dumpling", false), [
+    { label: "/home/ada/Documents/Dumpling", enabled: false },
     { label: "Ingest now", action: "ingest", enabled: true },
     { label: "Undo last Ingest", action: "undo", enabled: true },
     { label: "Ask…", action: "ask", enabled: true },
     { label: "Connect Telegram…", action: "setup", enabled: true },
     { label: "Backup remote…", action: "remote", enabled: true },
+    { label: "Report a problem", action: "report", enabled: true },
     { label: "Quit", action: "quit", enabled: true },
   ])
 })
 
 test("the tray menu shows a failed backup push", () => {
-  assert.deepEqual(trayMenuItems("/home/ada/Documents/Second Brain", true, true), [
-    { label: "/home/ada/Documents/Second Brain", enabled: false },
+  assert.deepEqual(trayMenuItems("/home/ada/Documents/Dumpling", true, true), [
+    { label: "/home/ada/Documents/Dumpling", enabled: false },
     { label: "Backup push failed", enabled: false },
     { label: "Ingest now", action: "ingest", enabled: true },
     { label: "Undo last Ingest", action: "undo", enabled: true },
     { label: "Ask…", action: "ask", enabled: true },
     { label: "Backup remote…", action: "remote", enabled: true },
+    { label: "Report a problem", action: "report", enabled: true },
     { label: "Quit", action: "quit", enabled: true },
   ])
 })

@@ -6,7 +6,7 @@ import test from "node:test"
 import { exec } from "dugite"
 import { createSecondBrain } from "../src/create-second-brain"
 import { freeEngine, freeModels } from "../src/engine"
-import { ingestNow, lastIngestStatus, type AgentRunner } from "../src/ingest-now"
+import { ingestNow, lastIngestError, lastIngestStatus, type AgentRunner } from "../src/ingest-now"
 
 process.env.TZ = "Asia/Dhaka"
 
@@ -96,16 +96,21 @@ test("each failure kind stashes the chunk, names the stash in a notification, an
   }
   assert.equal(fails(brain, "2026-10-08-120000-mac"), 3)
   assert.equal(lastIngestStatus(brain), "failed")
+  assert.deepEqual(lastIngestError(brain), { when: now.toISOString(), reason: "runner changed nothing in vault/wiki/" })
 
   const result = await ingestNow({ brain, apiKey: key, today, now, runner: good(brain) })
   assert.equal(result.status, "ok")
   assert.equal(fs.existsSync(path.join(brain, "vault", "raw", "2026", "10", dump)), true)
   assert.equal(fails(brain, "2026-10-08-120000-mac"), undefined)
   assert.equal(lastIngestStatus(brain), "ok")
+  // A later good run does not hide the last error; its date says how old it is.
+  assert.deepEqual(lastIngestError(brain), { when: now.toISOString(), reason: "runner changed nothing in vault/wiki/" })
 })
 
 test("a brain that never ran Ingest has no last status", async () => {
-  assert.equal(lastIngestStatus(await brainWith()), null)
+  const brain = await brainWith()
+  assert.equal(lastIngestStatus(brain), null)
+  assert.equal(lastIngestError(brain), null)
 })
 
 test("a failure to write index.md fails the chunk like any other failure", async () => {

@@ -1,6 +1,6 @@
 export type TrayMenuItem = {
   label: string
-  action?: "setup" | "ingest" | "undo" | "ask" | "remote" | "update" | "quit"
+  action?: "setup" | "ingest" | "undo" | "ask" | "remote" | "update" | "report" | "quit"
   enabled: boolean
 }
 
@@ -14,6 +14,7 @@ export function trayMenuItems(
   const update = newVersion
     ? [{ label: `New version ${newVersion}…`, action: "update" as const, enabled: true }]
     : []
+  const report = { label: "Report a problem", action: "report" as const, enabled: true }
   if (brainFolder) {
     return [
       { label: brainFolder, enabled: false },
@@ -27,12 +28,14 @@ export function trayMenuItems(
         : [{ label: "Connect Telegram…", action: "setup" as const, enabled: true }]),
       { label: "Backup remote…", action: "remote", enabled: true },
       ...update,
+      report,
       { label: "Quit", action: "quit", enabled: true },
     ]
   }
   return [
     { label: "Choose folder…", action: "setup", enabled: true },
     ...update,
+    report,
     { label: "Quit", action: "quit", enabled: true },
   ]
 }

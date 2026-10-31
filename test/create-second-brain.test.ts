@@ -12,16 +12,16 @@ function tempFolder(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "second-brain-"))
 }
 
-test("the default folder is Documents/Second Brain", () => {
+test("the default folder is Documents/Dumpling", () => {
   const home = path.join("/home/ada")
   const documents = path.join(home, "Documents")
   assert.equal(
     defaultSecondBrainFolder(home, documents),
-    `${documents}${path.sep}Second Brain`,
+    `${documents}${path.sep}Dumpling`,
   )
-  assert.equal(defaultSecondBrainFolder(home, home), `${documents}${path.sep}Second Brain`)
+  assert.equal(defaultSecondBrainFolder(home, home), `${documents}${path.sep}Dumpling`)
   const custom = path.join("/data", "docs")
-  assert.equal(defaultSecondBrainFolder(home, custom), `${custom}${path.sep}Second Brain`)
+  assert.equal(defaultSecondBrainFolder(home, custom), `${custom}${path.sep}Dumpling`)
 })
 
 test("createSecondBrain writes the v1 layout and fixed wiki files", async () => {
@@ -177,7 +177,7 @@ test("createSecondBrain makes a first commit with the bundled git", async () => 
     assert.equal(subject.stdout.trim(), "create second brain")
 
     const author = await exec(["log", "-1", "--format=%an%n%ae"], folder)
-    assert.equal(author.stdout, "Second Brain\nsecond-brain@localhost\n")
+    assert.equal(author.stdout, "Dumpling\ndumpling@localhost\n")
 
     const branch = await exec(["rev-parse", "--abbrev-ref", "HEAD"], folder)
     assert.equal(branch.stdout.trim(), "main")

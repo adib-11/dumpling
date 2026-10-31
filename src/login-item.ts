@@ -14,11 +14,13 @@ export function enableLinuxAutostart(
   const entry = [
     "[Desktop Entry]",
     "Type=Application",
-    "Name=Second Brain",
+    "Name=Dumpling",
     `Exec=${exec}`,
     "Terminal=false",
     "X-GNOME-Autostart-enabled=true",
     "",
   ].join("\n")
-  fs.writeFileSync(path.join(directory, "second-brain.desktop"), entry)
+  fs.writeFileSync(path.join(directory, "dumpling.desktop"), entry)
+  // The entry the app wrote as Second Brain would start the old AppImage too.
+  fs.rmSync(path.join(directory, "second-brain.desktop"), { force: true })
 }
