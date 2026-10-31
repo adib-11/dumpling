@@ -24,3 +24,7 @@ export function enableLinuxAutostart(
   // The entry the app wrote as Second Brain would start the old AppImage too.
   fs.rmSync(path.join(directory, "second-brain.desktop"), { force: true })
 }
+
+export function disableLinuxAutostart(configHome: string): void {
+  fs.rmSync(path.join(configHome, "autostart", "dumpling.desktop"), { force: true })
+}

@@ -519,6 +519,21 @@ async function until(done: () => boolean): Promise<void> {
   assert.ok(done())
 }
 
+test("a stopped poll confirms what it saved, so a poll into another folder does not save it again", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  const other = fs.mkdtempSync(path.join(os.tmpdir(), "drain-telegram-"))
+  await createSecondBrain(other, templatesDir)
+  api.updates = [message(1, 10, at, { text: "saved before the folder changed" })]
+  const stop = new AbortController()
+
+  await pollTelegram(bot, folder, 111, stop.signal, undefined, 10, () => stop.abort())
+  await drainTelegram(bot, other, 111)
+
+  assert.deepEqual(inbox(folder), ["2026-10-21-140000-telegram.md"])
+  assert.deepEqual(inbox(other), [])
+})
+
 test("an /ask message is answered in the chat and never becomes a Dump", async (t) => {
   const { folder, api, bot } = await setup()
   t.after(api.close)
@@ -746,4 +761,30 @@ test("during an Ingest or Undo a drain saves the Dump but leaves git alone", asy
   assert.deepEqual(inbox(folder), ["2026-10-21-140000-telegram.md"])
   const status = await exec(["status", "--porcelain"], folder)
   assert.equal(status.stdout, "?? inbox/2026-10-21-140000-telegram.md\n")
+})
+
+test("a failed confirm after a stopped poll is logged on one line, with its message", async (t) => {
+  const { folder, api, bot } = await setup()
+  t.after(api.close)
+  api.updates = [message(1, 10, at, { text: "saved before the stop" })]
+  const stop = new AbortController()
+  const logged: unknown[][] = []
+  t.mock.method(console, "error", (...args: unknown[]) => logged.push(args))
+  const failing = Object.assign(
+    async (method: string, params?: Record<string, unknown>, signal?: AbortSignal) => {
+      if (method === "getUpdates" && params?.timeout === 0) {
+        throw new Error("Telegram getUpdates failed: Bad Gateway\nFORGED LOG LINE\r\nanother\u2028one")
+      }
+      return bot(method, params, signal)
+    },
+    { file: bot.file },
+  )
+
+  await pollTelegram(failing, folder, 111, stop.signal, undefined, 10, () => stop.abort())
+
+  assert.deepEqual(logged, [
+    [
+      "drain-telegram: could not confirm the last batch: Telegram getUpdates failed: Bad Gateway FORGED LOG LINE another one",
+    ],
+  ])
 })

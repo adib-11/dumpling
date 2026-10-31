@@ -6,9 +6,11 @@ import test from "node:test"
 import {
   readBrainFolder,
   readEngineChoice,
+  readOpenAtLogin,
   readTelegramChat,
   writeBrainFolder,
   writeEngineChoice,
+  writeOpenAtLogin,
   writeTelegramChat,
 } from "../src/brain-config"
 
@@ -53,4 +55,17 @@ test("the chosen Engine is remembered, and none is chosen at first", () => {
   assert.equal(readEngineChoice(configPath), "gemini")
   fs.writeFileSync(configPath, JSON.stringify({ engine: "mistral" }))
   assert.equal(readEngineChoice(configPath), null)
+})
+
+test("open at login is on until the Owner turns it off", () => {
+  const configPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "brain-config-")), "config.json")
+  writeBrainFolder(configPath, "/home/ada/Documents/Dumpling")
+  assert.equal(readOpenAtLogin(configPath), true)
+
+  writeOpenAtLogin(configPath, false)
+
+  assert.equal(readOpenAtLogin(configPath), false)
+  assert.equal(readBrainFolder(configPath), "/home/ada/Documents/Dumpling")
+  writeOpenAtLogin(configPath, true)
+  assert.equal(readOpenAtLogin(configPath), true)
 })
