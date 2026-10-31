@@ -17,8 +17,26 @@ function splitFrontmatter(text: string): string {
   return match ? text.slice(match[0].length) : text
 }
 
-function pageText(brain: string, id: string): string {
-  return fs.readFileSync(path.join(wikiDir(brain), `${id}.md`), "utf8")
+// Whether `file` is strictly inside `root`.
+function isInside(root: string, file: string): boolean {
+  const relative = path.relative(root, file)
+  return relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
+}
+
+// A Page's text, or null when `id` does not name a file inside wiki/. Every read of a Page goes through here,
+// and `id` can come from the renderer, so the path is resolved and checked twice: as written (`..` climbs),
+// then with symlinks followed (a link inside wiki/ that leads out of it).
+function pageText(brain: string, id: string): string | null {
+  try {
+    const root = fs.realpathSync(wikiDir(brain))
+    const resolved = path.resolve(root, `${id}.md`)
+    if (!isInside(root, resolved)) return null
+    const real = fs.realpathSync(resolved)
+    if (!isInside(root, real)) return null
+    return fs.readFileSync(real, "utf8")
+  } catch {
+    return null
+  }
 }
 
 function summarise(id: string, kind: PageKind, text: string): PageSummary {
@@ -76,8 +94,9 @@ export async function readPage(brain: string, id: string): Promise<PageView | nu
   const groups = listPages(brain)
   const summary = groups.flatMap((group) => group.pages).find((page) => page.id === id)
   if (!summary) return null
-  const resolver = pageResolver(brain, groups)
   const text = pageText(brain, id)
+  if (text === null) return null
+  const resolver = pageResolver(brain, groups)
   return {
     id,
     kind: summary.kind,
@@ -96,6 +115,7 @@ function backlinks(brain: string, groups: PageGroup[], resolver: (from: string) 
     .filter((other) => {
       const resolve = resolver(other.id)
       const text = pageText(brain, other.id)
+      if (text === null) return false
       return wikiTargets(splitFrontmatter(text)).some((target) => {
         const found = resolve(target)
         return found.kind === "page" && found.id === id
@@ -110,9 +130,10 @@ export function listPages(brain: string): PageGroup[] {
   for (const kind of pageKinds) {
     const files =
       kind === "me" ? (fs.existsSync(path.join(wiki, "me.md")) ? ["me.md"] : []) : markdownFiles(path.join(wiki, kind))
-    const pages = files.map((name) => {
+    const pages = files.flatMap((name) => {
       const id = kind === "me" ? "me" : `${kind}/${name.slice(0, -3)}`
-      return summarise(id, kind, pageText(brain, id))
+      const text = pageText(brain, id)
+      return text === null ? [] : [summarise(id, kind, text)]
     })
     if (pages.length > 0) groups.push({ kind, pages })
   }
@@ -130,6 +151,7 @@ export function searchPages(brain: string, query: string): PageHit[] {
   const hits: { hit: PageHit; score: number }[] = []
   for (const page of listPages(brain).flatMap((group) => group.pages)) {
     const text = pageText(brain, page.id)
+    if (text === null) continue
     const aliases = parseFrontmatter(text).aliases
     const names = [path.basename(page.id), page.title, ...(Array.isArray(aliases) ? aliases : [aliases ?? ""])].join("\n").toLowerCase()
     const body = withoutWikiBrackets(splitFrontmatter(text))

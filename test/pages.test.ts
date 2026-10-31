@@ -281,3 +281,42 @@ test("searchPages finds Pages by words in their name, alias or text, names first
   // Frontmatter keys are not text.
   assert.deepEqual(searchPages(brain, "type"), [])
 })
+
+test("a Page file that leads outside the vault is not listed, read or searched", async (t) => {
+  const brain = brainWith({ "topics/sleep.md": "# Sleep\n\nI sleep badly.\n" })
+  const outside = path.join(brain, "outside.md")
+  fs.writeFileSync(outside, "---\nsummary: leaked\n---\n\n# Leak\n\nsleep passwords\n")
+  try {
+    fs.symlinkSync(outside, path.join(brain, "vault", "wiki", "topics", "leak.md"))
+    fs.symlinkSync(brain, path.join(brain, "vault", "wiki", "people"))
+  } catch {
+    t.skip("this system does not allow symlinks")
+    return
+  }
+
+  assert.deepEqual(
+    listPages(brain).flatMap((group) => group.pages.map((page) => page.id)),
+    ["topics/sleep"],
+  )
+  assert.equal(await readPage(brain, "topics/leak"), null)
+  assert.equal(await readPage(brain, "people/outside"), null)
+  assert.deepEqual(searchPages(brain, "passwords"), [])
+})
+
+test("readPage rejects ids that climb out of wiki/ however they are written", async () => {
+  const brain = brainWith({ "topics/sleep.md": "# Sleep\n" })
+  fs.writeFileSync(path.join(brain, "secret.md"), "# Secret\n")
+  fs.writeFileSync(path.join(brain, "vault", "secret.md"), "# Secret\n")
+
+  for (const id of [
+    "topics/../../secret",
+    "topics/../../../secret",
+    "../secret",
+    path.join(brain, "secret"),
+    "topics\\..\\..\\secret",
+    "topics/sleep\0",
+    "",
+  ]) {
+    assert.equal(await readPage(brain, id), null, id)
+  }
+})
