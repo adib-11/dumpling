@@ -100,7 +100,7 @@ Before filing, Ingest now fetches the link of every Dump with a `url` into a `<n
 
 Ingest now files markdown Dumps dropped in `inbox/`. It runs the bundled opencode binary on the ingest skill, up to 25 Dumps at a time, then moves that chunk to `vault/raw/YYYY/MM/` and commits `ingest: <date>, N Dumps`. The cost of the run, priced from the tokens with the Engine's cost table, is appended to `.state/runs.tsv`. The key is not written into the folder, the log, or the opencode process arguments.
 
-Ingest also runs by itself once a day: at 03:00, or at the first wake after it if the computer was asleep, right after a Telegram drain. A chunk fails on a non-zero exit, a 20 minute timeout, or no change in `vault/wiki/`. Its edits go to a git stash named `failed ingest <time>` (never a reset), its Dumps stay in `inbox/`, and a desktop notification names the stash. On the free Engine, a 429 or a gone default model moves the run to the fallback free model, once; if that fails too, the Dumps stay in `inbox/`, count no failure, and the notification offers to add a key. No other model is ever tried. A Dump that failed twice is retried alone, and one that fails twice alone moves to `inbox/failed/`. The tray icon gets a red dot after a failed Ingest and an amber dot when Telegram has not drained for 20 h. Undo last Ingest reverts the newest `ingest:` commit, which restores the wiki and puts its Dumps back in `inbox/`; an Undo that would overwrite a later edit changes nothing.
+Ingest also runs by itself once a day: at 03:00, or at the first wake after it if the computer was asleep, right after a Telegram drain. A chunk fails on a non-zero exit, a 20 minute timeout, or no change in `vault/wiki/`. Its edits go to a git stash named `failed ingest <time>` (never a reset), its Dumps stay in `inbox/`, and a desktop notification names the stash. On the free Engine, a 429 or a gone default model moves the run to the fallback free model, once; if that fails too, the Dumps stay in `inbox/`, count no failure, and the notification offers to add a key. No other model is ever tried. A Dump that failed twice is retried alone, and one that fails twice alone moves to `inbox/failed/`. The tray icon gets a red dot after a failed Ingest and an amber dot when Telegram has not drained for 20 h. The Mac menu bar icon takes the menu bar's one colour, so there it is a solid dot for a failed Ingest and a ring for not drained. Undo last Ingest reverts the newest `ingest:` commit, which restores the wiki and puts its Dumps back in `inbox/`; an Undo that would overwrite a later edit changes nothing.
 
 ## Updates
 
@@ -128,6 +128,8 @@ npm test
 npm run typecheck
 npm start
 ```
+
+The logo is `assets/logo.svg` and the menu bar glyph is `assets/tray.svg`. After editing either, `node scripts/make-icons.js` redraws the app icons (`assets/icon.icns`, `assets/icon.ico`, `assets/icons/`) and the tray icons (`assets/tray/`); commit what it writes. The colour and type tokens, with dark mode, are in `src/theme.css`, which every window loads.
 
 `node scripts/fetch-opencode.js` and `node scripts/fetch-yt-dlp.js` put the bundled binaries in `vendor/`. `node scripts/fetch-link-live.js` (after `npm run build`) fetches one real link per route and prints each result; it needs the network, so it is not part of `npm test`.
 

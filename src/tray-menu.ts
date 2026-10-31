@@ -49,3 +49,13 @@ export function trayHealth(lastIngest: string | null, lastDrained: Date | null, 
   if (lastDrained && now.getTime() - lastDrained.getTime() > drainWarnMs) return "not-drained"
   return "ok"
 }
+
+export type TrayIcon = { file: string; template: boolean }
+
+// The tray image for a state, as a path under assets/ (drawn by scripts/make-icons.js). A Mac menu bar icon is
+// a template image in one colour, which macOS tints; its failing and not-drained variants differ in shape. The
+// Windows and Linux trays show the colour logo with a red or amber dot.
+export function trayIcon(state: TrayHealth, platform: NodeJS.Platform): TrayIcon {
+  if (platform === "darwin") return { file: `tray/${state}Template.png`, template: true }
+  return { file: `tray/${state}.${platform === "win32" ? "ico" : "png"}`, template: false }
+}

@@ -73,27 +73,30 @@ export function Capture() {
   }
 
   return (
-    <form className="capture" onSubmit={submit} onKeyDown={keyDown} onDragOver={(event) => event.preventDefault()} onDrop={drop}>
-      <label htmlFor="capture-text">Dump</label>
-      <textarea
-        ref={box}
-        id="capture-text"
-        autoFocus
-        value={text}
-        placeholder="A thought or a link. Paste or drop an image."
-        onChange={(event) => setText(event.target.value)}
-        onPaste={paste}
-      />
-      {image && (
-        <p className="capture-image">
-          Image: {image.name}{" "}
-          <button type="button" onClick={() => setImage(null)}>
-            Remove
-          </button>
-        </p>
-      )}
-      <p role="alert">{error}</p>
-      <p className="capture-hint">{busy ? "Saving…" : "Enter saves. Esc closes."}</p>
-    </form>
+    <main className="capture" onDragOver={(event) => event.preventDefault()} onDrop={drop}>
+      <h1 className="sr-only">Quick capture</h1>
+      <form onSubmit={submit} onKeyDown={keyDown}>
+        <label htmlFor="capture-text">Dump</label>
+        <textarea
+          ref={box}
+          id="capture-text"
+          autoFocus
+          value={text}
+          placeholder="A thought or a link. Paste or drop an image."
+          onChange={(event) => setText(event.target.value)}
+          onPaste={paste}
+        />
+        {image && (
+          <p className="capture-image">
+            Image: {image.name}{" "}
+            <button type="button" onClick={() => setImage(null)}>
+              Remove
+            </button>
+          </p>
+        )}
+        <p role="alert">{error}</p>
+        <p className="capture-hint">{busy ? "Saving…" : "Enter saves. Esc closes."}</p>
+      </form>
+    </main>
   )
 }

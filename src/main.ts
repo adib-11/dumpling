@@ -47,7 +47,7 @@ import { createCaptureShortcut } from "./shortcut"
 import { isSecretName, moveSettings, oldAppName } from "./settings-move"
 import { connectBot, ingestBot, telegramBot } from "./telegram"
 import { readToday } from "./today"
-import { trayHealth, trayMenuItems, type TrayHealth, type TrayMenuItem } from "./tray-menu"
+import { trayHealth, trayIcon, trayMenuItems, type TrayHealth, type TrayMenuItem } from "./tray-menu"
 import { newerRelease, type NewRelease } from "./update-check"
 
 let tray: Tray | null = null
@@ -328,13 +328,19 @@ function notify(body: string, offer?: "add-key"): void {
 }
 
 function trayImage(state: TrayHealth): Electron.NativeImage {
-  const name = state === "ok" ? "icon.png" : `icon-${state}.png`
-  const icon = resourcePath("assets", name)
-  const image = nativeImage.createFromPath(icon).resize({ width: 22, height: 22 })
-  if (image.isEmpty()) throw new Error(`Tray icon is missing or unreadable: ${icon}`)
-  // A template image is drawn in one colour, which would hide the warning dot.
-  if (process.platform === "darwin" && state === "ok") image.setTemplateImage(true)
+  const icon = trayIcon(state, process.platform)
+  const file = resourcePath("assets", icon.file)
+  // Electron loads the @2x copy beside a PNG by itself.
+  const image = nativeImage.createFromPath(file)
+  if (image.isEmpty()) throw new Error(`Tray icon is missing or unreadable: ${file}`)
+  image.setTemplateImage(icon.template)
   return image
+}
+
+// The taskbar icon of a window on Windows and Linux. A Mac window takes the app's Dock icon.
+function windowIcon(): string | undefined {
+  if (process.platform === "darwin") return undefined
+  return resourcePath("assets", process.platform === "win32" ? "icon.ico" : path.join("icons", "512x512.png"))
 }
 
 function refreshHealth(): void {
@@ -416,6 +422,7 @@ function openMainWindow(tab: Tab | null = null): void {
     minHeight: 420,
     autoHideMenuBar: true,
     title: "Dumpling",
+    icon: windowIcon(),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,

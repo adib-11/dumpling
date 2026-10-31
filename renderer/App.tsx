@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import type { Tab, WindowState } from "../src/main-window"
+import logo from "../assets/logo.svg"
 import { EngineForm } from "./EngineForm"
 import { FolderForm } from "./FolderForm"
 import { Tabs } from "./Tabs"
@@ -25,6 +26,7 @@ export function App() {
   if (state.step === "folder") {
     return (
       <main className="first-run">
+        <img className="logo" src={logo} alt="" />
         <FolderForm onCreated={refresh} />
       </main>
     )
@@ -32,6 +34,7 @@ export function App() {
   if (state.step === "engine") {
     return (
       <main className="first-run">
+        <img className="logo" src={logo} alt="" />
         <h1 id="engine-title">Choose the Engine</h1>
         <EngineForm labelledBy="engine-title" onChosen={refresh} />
       </main>
