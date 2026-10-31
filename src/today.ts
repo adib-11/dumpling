@@ -147,13 +147,14 @@ function waitingFollowUps(brain: string): TodayDump[] {
   }
   if (asked.size === 0) return []
   // An answer comes after its question's Dump, so nothing older is opened.
-  const first = [...asked].sort()[0]
+  const oldestFirst = [...asked].sort((a, b) => a.localeCompare(b))
+  const first = oldestFirst[0]
   const answered = new Set(
     scanDumps(brain, first)
       .map((dump) => dump.fields.addendum_to)
       .filter((name) => name !== undefined),
   )
-  return [...asked].sort().filter((name) => !answered.has(name)).map((name) => describe(brain, name))
+  return oldestFirst.filter((name) => !answered.has(name)).map((name) => describe(brain, name))
 }
 
 function openThreads(brain: string): TodayView["openThreads"] {

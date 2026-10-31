@@ -186,6 +186,23 @@ test("Follow-ups waiting are the questions sent that no Addendum answers yet", a
   )
 })
 
+test("Follow-ups are listed oldest first whatever order the questions were recorded in, and an older Addendum is still found", async () => {
+  const brain = await setup()
+  filed(brain, "2026-10-22-090000-telegram", "newer")
+  filed(brain, "2026-10-20-090000-desktop", "older")
+  filed(brain, "2026-10-21-090000-telegram", "middle")
+  waiting(brain, "2026-10-23-080000-telegram", "answer", ["addendum_to: 2026-10-21-090000-telegram"])
+  fs.writeFileSync(
+    path.join(brain, "vault", "telegram-questions.md"),
+    "9003 2026-10-22-090000-telegram\n9001 2026-10-20-090000-desktop\n9002 2026-10-21-090000-telegram\n",
+  )
+
+  assert.deepEqual(
+    readToday(brain, now).followUps.map((each) => each.name),
+    ["2026-10-20-090000-desktop", "2026-10-22-090000-telegram"],
+  )
+})
+
 test("an Addendum older than the question does not answer it", async () => {
   const brain = await setup()
   filed(brain, "2026-10-22-090000-telegram", "a book")
