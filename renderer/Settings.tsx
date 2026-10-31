@@ -72,7 +72,7 @@ function Folder() {
       setError(result.error)
       return
     }
-    setCurrent(folder.trim())
+    setCurrent(folder)
     setFolder("")
     setDone(
       result.created
@@ -86,19 +86,12 @@ function Folder() {
       <h2 id="settings-folder">Folder</h2>
       {current && <p>The second brain is in {current}.</p>}
       <p>
-        Choose another second brain folder to use it, or an empty folder to make a new one. Nothing is moved or copied.
+        Browse to another second brain folder to use it, or to an empty folder to make a new one. Nothing is moved or copied.
       </p>
       <form onSubmit={submit}>
         <label htmlFor="settings-folder-path">Folder</label>
         <div className="row">
-          <input
-            id="settings-folder-path"
-            type="text"
-            spellCheck={false}
-            required
-            value={folder}
-            onChange={(event) => setFolder(event.target.value)}
-          />
+          <input id="settings-folder-path" type="text" spellCheck={false} required readOnly value={folder} />
           <button type="button" onClick={browse}>
             Browse
           </button>

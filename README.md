@@ -69,7 +69,7 @@ The app sits in the menu bar on Mac and in the system tray on Windows and Linux.
 
 Open Dumpling opens the main window, with five tabs: Today, Inbox, Pages, Ask and Settings. While it is open the app also has a Dock icon (Mac) or a taskbar entry (Windows, Linux); closing it leaves the app in the menu bar or tray only. Inbox and Pages are empty for now. Ask takes a question, as `/ask` does in Telegram. Settings changes the Engine and key, the bot, the folder, the backup remote and open at login. A change takes effect at once: a new Engine runs the next Ingest and the next question, with no restart.
 
-The folder in Settings takes another second brain folder, which the app then uses as it is, or an empty folder, where it makes a new one. A folder with other files in it is refused. Nothing is moved or copied, and the old folder is left as it was. A bot in Settings goes through the same steps as Connect your phone; the bot in use keeps draining until the new bot gets `/start`.
+The folder in Settings, chosen with Browse, can be another second brain folder, which the app then uses as it is, or an empty folder, where it makes a new one. A path with `..` in it is refused. A folder with other files in it is refused. Nothing is moved or copied, and the old folder is left as it was. A bot in Settings goes through the same steps as Connect your phone; the bot in use keeps draining until the new bot gets `/start`.
 
 Backup remote… opens Settings, which takes a git remote URL. After each Ingest the app pushes to it, last and best-effort. A failed push rolls nothing back: the menu shows "Backup push failed", the app notifies once, and the next Ingest pushes again. Save a blank URL to stop pushing.
 

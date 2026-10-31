@@ -26,7 +26,7 @@ import {
   writeOpenAtLogin,
   writeTelegramChat,
 } from "./brain-config"
-import { createSecondBrain, defaultSecondBrainFolder, openSecondBrain } from "./create-second-brain"
+import { createSecondBrain, defaultSecondBrainFolder, openSecondBrain, secondBrainPath } from "./create-second-brain"
 import { pollTelegram, type Asker } from "./drain-telegram"
 import { engineMedia, freeEngine, isProvider, keyEngine, keyProviders, offeredProviders, type Engine, type Provider } from "./engine"
 import { ytDlpAt } from "./fetch-link"
@@ -47,6 +47,8 @@ let mainWindow: BrowserWindow | null = null
 let connecting: { abort: AbortController; bot: string | null } | null = null
 // A token checked with getMe, kept here until /start connects it, so the bot in use stays until then.
 let checkedToken: string | null = null
+// The last folder the OS folder picker returned, normalized. Settings changes the folder only to this one.
+let pickedFolder: string | null = null
 // The running Telegram poll, stopped and started again when Settings changes the bot or the folder.
 let poll: { stop: AbortController; done: Promise<void> } | null = null
 let unsaved: string | null = null
@@ -667,15 +669,16 @@ function start(): void {
       properties: ["openDirectory", "createDirectory"],
     })
     if (result.canceled || result.filePaths.length === 0) return null
-    return result.filePaths[0]
+    pickedFolder = secondBrainPath(result.filePaths[0])
+    return pickedFolder
   })
 
   ipcMain.handle("window:create", async (_event, folder: unknown) => {
     if (typeof folder !== "string" || folder.trim() === "") {
       return { ok: false as const, error: "Choose a folder." }
     }
-    const chosen = folder.trim()
     try {
+      const chosen = secondBrainPath(folder.trim())
       const created = await createSecondBrain(chosen, resourcePath("templates"))
       writeBrainFolder(configPath(), chosen)
       rebuildMenu()
@@ -690,13 +693,16 @@ function start(): void {
   ipcMain.handle("window:folder", () => readBrainFolder(configPath()))
 
   // Settings points the app at another second brain, or makes one in an empty folder. The old folder stays as it is.
+  // It takes only the folder the OS picker just returned, never a path typed or sent by the renderer.
   ipcMain.handle("window:change-folder", async (_event, folder: unknown) => {
     if (typeof folder !== "string" || folder.trim() === "") {
       return { ok: false as const, error: "Choose a folder." }
     }
-    const chosen = folder.trim()
     try {
+      const chosen = secondBrainPath(folder.trim())
+      if (chosen !== pickedFolder) return { ok: false as const, error: "Choose the folder with Browse." }
       const { created } = await openSecondBrain(chosen, resourcePath("templates"))
+      pickedFolder = null
       writeBrainFolder(configPath(), chosen)
       backupFailed = false
       rebuildMenu()

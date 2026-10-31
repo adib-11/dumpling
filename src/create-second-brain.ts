@@ -34,10 +34,18 @@ export function defaultSecondBrainFolder(homeDir: string, documentsDir: string):
   return path.join(base, "Dumpling")
 }
 
-export async function createSecondBrain(folder: string, templatesDir: string): Promise<{ commit: string }> {
-  if (!path.isAbsolute(folder)) {
-    throw new Error(`Choose a full folder path, not ${folder}`)
+// The folder the Owner chose, as a full normalized path. A relative path, a ".." segment or a NUL byte is
+// refused, so the folder is exactly the one picked and never one beside or above it.
+export function secondBrainPath(chosen: string): string {
+  const segments = chosen.split(/[\\/]+/)
+  if (chosen === "" || chosen.includes("\0") || !path.isAbsolute(chosen) || segments.includes("..")) {
+    throw new Error("Choose a full folder path, with no .. in it.")
   }
+  return path.resolve(path.normalize(chosen))
+}
+
+export async function createSecondBrain(chosen: string, templatesDir: string): Promise<{ commit: string }> {
+  const folder = secondBrainPath(chosen)
   const existed = fs.existsSync(folder)
   if (existed && fs.readdirSync(folder).length > 0) {
     throw new Error(`Second brain folder is not empty: ${folder}`)
@@ -80,8 +88,8 @@ export async function createSecondBrain(folder: string, templatesDir: string): P
 }
 
 // Settings changes the folder to a second brain the Owner already has, or makes a new one in an empty folder.
-export async function openSecondBrain(folder: string, templatesDir: string): Promise<{ created: boolean }> {
-  if (!path.isAbsolute(folder)) throw new Error(`Choose a full folder path, not ${folder}`)
+export async function openSecondBrain(chosen: string, templatesDir: string): Promise<{ created: boolean }> {
+  const folder = secondBrainPath(chosen)
   if (isSecondBrain(folder)) return { created: false }
   if (fs.existsSync(folder) && fs.readdirSync(folder).length > 0) {
     throw new Error("That folder has other files in it. Choose a second brain folder or an empty one.")
