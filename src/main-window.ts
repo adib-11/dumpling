@@ -1,6 +1,9 @@
 // What the main window shows (spec §4). First run is a folder, then the Engine; the phone is never a gate.
-// Shared by the main process, the preload and the renderer, so it imports types only.
+// Shared by the main process, the preload and the renderer, so it imports nothing but types.
+
+import type { InboxDump } from "./inbox"
 import type { PageGroup, PageHit, PageView } from "./page-view"
+import type { TodayView } from "./today"
 
 export type WindowStep = "folder" | "engine" | "today"
 
@@ -48,4 +51,13 @@ export type DumplingApi = {
   openInObsidian(id: string): Promise<void>
   // Opens an http or https link in the browser; anything else is ignored.
   openLink(url: string): Promise<void>
+  // null before a folder is chosen.
+  today(): Promise<TodayView | null>
+  inbox(): Promise<InboxDump[]>
+  editDump(name: string, text: string): Promise<Outcome>
+  deleteDump(name: string): Promise<Outcome>
+  // Runs Ingest now and resolves when it ends. A failed run shows on Today; only a run that could not start is an error.
+  retryIngest(): Promise<Outcome>
+  // Runs when a Dump arrives or changes, or an Ingest or Undo ends. Returns the way to stop listening.
+  onChange(listener: () => void): () => void
 }

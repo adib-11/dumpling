@@ -1,8 +1,10 @@
 import { useRef, type KeyboardEvent, type ReactNode } from "react"
 import { tabs, type Tab } from "../src/main-window"
 import { ConnectPhone } from "./ConnectPhone"
+import { Inbox } from "./Inbox"
 import { Pages } from "./Pages"
 import { Settings } from "./Settings"
+import { Today } from "./Today"
 
 const labels: Record<Tab, string> = {
   today: "Today",
@@ -32,10 +34,10 @@ export function Tabs({ tab, onTab, connectPhone, onConnected }: Props) {
     today: (
       <>
         {connectPhone && <ConnectPhone onConnected={onConnected} />}
-        <p className="empty">Nothing filed today yet.</p>
+        <Today />
       </>
     ),
-    inbox: <p className="empty">Dumps waiting for the next Ingest show here.</p>,
+    inbox: <Inbox />,
     pages: <Pages active={tab === "pages"} />,
     ask: <p className="empty">Ask… in the menu opens the Ask window.</p>,
     settings: <Settings />,

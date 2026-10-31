@@ -10,7 +10,7 @@ body {
 
 main {
   padding: 24px;
-  max-width: 640px;
+  max-width: 720px;
 }
 
 h1 {
@@ -208,4 +208,74 @@ button.page-link {
   overflow-x: auto;
   padding: 8px;
   background: color-mix(in srgb, currentColor 6%, transparent);
+}
+
+.failure {
+  border-color: #9f2d1e;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin: 0 0 24px;
+}
+
+.stats div {
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.stats dt {
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+
+.stats dd {
+  margin: 0;
+  font-weight: 650;
+}
+
+.dumps {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+}
+
+.dumps li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 0;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.dumps .meta {
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+
+.dumps .body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.dumps .actions {
+  justify-content: flex-start;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  font: inherit;
+  padding: 6px 8px;
+}
+
+.inbox form .actions {
+  justify-content: flex-end;
 }

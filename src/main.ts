@@ -30,6 +30,7 @@ import { engineMedia, freeEngine, isProvider, keyEngine, keyProviders, offeredPr
 import { ytDlpAt } from "./fetch-link"
 import { backupRemote, hideCredentials, setBackupRemote } from "./git-remote"
 import { ingestNow, lastIngestError, lastIngestStatus, spawnOpencode, undoLastIngest, type IngestResult } from "./ingest-now"
+import { deleteDump, editDump, listInbox } from "./inbox"
 import { enableLinuxAutostart } from "./login-item"
 import { windowState, type Tab, type WindowState } from "./main-window"
 import { obsidianUrl } from "./obsidian"
@@ -38,6 +39,7 @@ import { problemReportUrl, systemName } from "./report-problem"
 import { claimDailyIngest, readDrain, rememberDrain } from "./schedule"
 import { isSecretName, moveSettings, oldAppName } from "./settings-move"
 import { connectBot, ingestBot, telegramBot } from "./telegram"
+import { readToday } from "./today"
 import { trayHealth, trayMenuItems, type TrayHealth, type TrayMenuItem } from "./tray-menu"
 import { newerRelease, type NewRelease } from "./update-check"
 
@@ -250,8 +252,14 @@ function startPolling(): void {
         unsaved = notice
         rebuildMenu()
       },
+      onSaved: broadcastChange,
     },
   )
+}
+
+// Tells the main window that the folder changed under it, so Today and Inbox read it again.
+function broadcastChange(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("window:changed")
 }
 
 function drainStamp(folder: string): string {
@@ -475,22 +483,24 @@ function createTray(): void {
   refreshHealth()
 }
 
-async function runIngest(fromTray: boolean): Promise<void> {
+// Returns how the run ended, or "not-set-up" when there is no folder, Engine or opencode to run it with.
+async function runIngest(fromTray: boolean): Promise<IngestResult["status"] | "not-set-up"> {
   const folder = readBrainFolder(configPath())
   if (!folder) {
     if (fromTray) openMainWindow()
-    return
+    return "not-set-up"
   }
   const engine = currentEngine()
   if (!engine) {
     if (fromTray) openMainWindow()
-    return
+    return "not-set-up"
   }
   const bin = opencodeBin()
   if (!fs.existsSync(bin)) {
     notify("Ingest stopped: the opencode binary is missing.")
-    return
+    return "not-set-up"
   }
+  let status: IngestResult["status"] = "failed"
   try {
     const result = await ingestNow({
       brain: folder,
@@ -501,6 +511,7 @@ async function runIngest(fromTray: boolean): Promise<void> {
       ...ingestBot(loadToken(), readTelegramChat(configPath())),
       daily: !fromTray,
     })
+    status = result.status
     if (result.status === "failed") console.error(redact(result.reason ?? "Ingest failed.", engine.key))
     showPush(result)
   } catch (error) {
@@ -509,6 +520,8 @@ async function runIngest(fromTray: boolean): Promise<void> {
     notify(redact(`Ingest failed: ${message}`, engine.key))
   }
   refreshHealth()
+  broadcastChange()
+  return status
 }
 
 // The issue carries the version, the system and the last Ingest error, and no Dump or Page text.
@@ -555,6 +568,7 @@ async function undoFromTray(): Promise<void> {
   } catch (error) {
     notify(`Undo failed: ${errorMessage(error, "unknown error")}`)
   }
+  broadcastChange()
 }
 
 // A failed push shows in the tray until a push succeeds, and notifies once.
@@ -659,6 +673,41 @@ function start(): void {
 
   ipcMain.handle("pages:open-link", (_event, url: unknown) => {
     if (typeof url === "string" && /^https?:\/\//i.test(url)) return shell.openExternal(url)
+  })
+
+  ipcMain.handle("window:today", () => {
+    const folder = readBrainFolder(configPath())
+    return folder ? readToday(folder, new Date()) : null
+  })
+
+  ipcMain.handle("window:inbox", () => {
+    const folder = readBrainFolder(configPath())
+    return folder ? listInbox(folder) : []
+  })
+
+  ipcMain.handle("window:edit-dump", async (_event, name: unknown, text: unknown) => {
+    const folder = readBrainFolder(configPath())
+    if (!folder) return { ok: false as const, error: "Choose a folder first." }
+    if (typeof name !== "string" || typeof text !== "string") return { ok: false as const, error: "Type some text." }
+    const result = await editDump(folder, name, text)
+    broadcastChange()
+    return result
+  })
+
+  ipcMain.handle("window:delete-dump", async (_event, name: unknown) => {
+    const folder = readBrainFolder(configPath())
+    if (!folder) return { ok: false as const, error: "Choose a folder first." }
+    if (typeof name !== "string") return { ok: false as const, error: "Choose a Dump." }
+    const result = await deleteDump(folder, name)
+    broadcastChange()
+    return result
+  })
+
+  ipcMain.handle("window:retry-ingest", async () => {
+    const status = await runIngest(true)
+    if (status === "already-running") return { ok: false as const, error: "Ingest is already running." }
+    if (status === "not-set-up") return { ok: false as const, error: "Ingest cannot start: finish setting up the Engine first." }
+    return { ok: true as const }
   })
 
   ipcMain.handle("window:providers", () => offeredProviders())
