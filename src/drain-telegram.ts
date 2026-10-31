@@ -34,10 +34,13 @@ export async function drainTelegram(
   ask?: Asker,
   media?: MediaReader,
   onUnsaved?: (notice: string | null) => void,
+  // Called after a batch saved at least one Dump and committed it.
+  onSaved?: () => void,
 ): Promise<number | undefined> {
   const updates = (await bot("getUpdates", { offset, timeout: longPollSeconds })) as Update[]
   const known = updates.length ? savedMessages(folder) : emptyKnown()
   const toDelete: number[] = []
+  let saved = false
   for (const update of updates) {
     const message = update.message
     if (message?.chat.id !== chat) continue
@@ -50,13 +53,16 @@ export async function drainTelegram(
     const outcome = await capture(bot, folder, message, known, media)
     if (outcome.status === "retry") {
       if (toDelete.length) await commitUnlessLocked(folder)
+      if (saved) onSaved?.()
       await deleteSaved(bot, chat, toDelete)
       onUnsaved?.(outcome.notice)
       return update.update_id
     }
+    if (outcome.status === "saved") saved = true
     if (outcome.status === "saved" || outcome.status === "duplicate") toDelete.push(message.message_id)
   }
   if (updates.length) await commitUnlessLocked(folder)
+  if (saved) onSaved?.()
   await deleteSaved(bot, chat, toDelete)
   onUnsaved?.(null)
   return updates.length ? updates[updates.length - 1].update_id + 1 : offset
@@ -73,7 +79,7 @@ export async function pollTelegram(
   ask?: Asker,
   retryMs = 5000,
   onDrained: () => void = () => {},
-  options?: { media?: MediaReader; onUnsaved?: (notice: string | null) => void },
+  options?: { media?: MediaReader; onUnsaved?: (notice: string | null) => void; onSaved?: () => void },
 ): Promise<void> {
   const stoppable = Object.assign(
     (method: string, params?: Record<string, unknown>, signal?: AbortSignal) =>
@@ -87,7 +93,7 @@ export async function pollTelegram(
       offset = await drainTelegram(stoppable, folder, chat, offset, ask, options?.media, (notice) => {
         blocked = notice !== null
         options?.onUnsaved?.(notice)
-      })
+      }, options?.onSaved)
       onDrained()
       // The failed update is still waiting, so getUpdates would return it at once. Wait before spending another call.
       if (blocked && !stop.aborted) await new Promise((resolve) => setTimeout(resolve, retryMs))

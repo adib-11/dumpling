@@ -27,6 +27,24 @@ const dumpling: DumplingApi = {
   changeFolder: (folder) => ipcRenderer.invoke("window:change-folder", folder),
   openAtLogin: () => ipcRenderer.invoke("window:open-at-login"),
   setOpenAtLogin: (on) => ipcRenderer.invoke("window:set-open-at-login", on),
+  pages: () => ipcRenderer.invoke("pages:list"),
+  page: (id) => ipcRenderer.invoke("pages:read", id),
+  searchPages: (query) => ipcRenderer.invoke("pages:search", query),
+  obsidianInstalled: () => ipcRenderer.invoke("pages:obsidian-installed"),
+  openInObsidian: (id) => ipcRenderer.invoke("pages:open-in-obsidian", id),
+  openLink: (url) => ipcRenderer.invoke("pages:open-link", url),
+  today: () => ipcRenderer.invoke("window:today"),
+  inbox: () => ipcRenderer.invoke("window:inbox"),
+  editDump: (name, text) => ipcRenderer.invoke("window:edit-dump", name, text),
+  deleteDump: (name) => ipcRenderer.invoke("window:delete-dump", name),
+  retryIngest: () => ipcRenderer.invoke("window:retry-ingest"),
+  onChange: (listener) => {
+    const forward = () => listener()
+    ipcRenderer.on("window:changed", forward)
+    return () => {
+      ipcRenderer.removeListener("window:changed", forward)
+    }
+  },
 }
 
 contextBridge.exposeInMainWorld("dumpling", dumpling)
