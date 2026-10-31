@@ -295,3 +295,22 @@ textarea {
 .inbox form .actions {
   justify-content: flex-end;
 }
+
+.capture {
+  padding: 12px 16px;
+}
+
+.capture textarea {
+  height: 84px;
+  resize: none;
+}
+
+.capture .capture-image,
+.capture .capture-hint {
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+}
+
+.capture .capture-hint {
+  opacity: 0.7;
+}

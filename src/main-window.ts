@@ -3,6 +3,7 @@
 
 import type { InboxDump } from "./inbox"
 import type { PageGroup, PageHit, PageView } from "./page-view"
+import type { ShortcutStatus } from "./shortcut"
 import type { TodayView } from "./today"
 
 export type WindowStep = "folder" | "engine" | "today"
@@ -65,6 +66,14 @@ export type DumplingApi = {
   deleteDump(name: string): Promise<Outcome>
   // Runs Ingest now and resolves when it ends. A failed run shows on Today; only a run that could not start is an error.
   retryIngest(): Promise<Outcome>
+  // The capture box (quick capture). `image` is the pasted or dropped file's bytes. Saves one Dump and, if it
+  // saved, closes the box.
+  capture(text: string, image: Uint8Array | null): Promise<Outcome>
+  closeCapture(): Promise<void>
+  // The shortcut that opens the capture box, and whether the system gave it to the app.
+  captureShortcut(): Promise<ShortcutStatus & { platform: string }>
+  // Keeps the old shortcut when the system refuses the new one.
+  setCaptureShortcut(accelerator: string): Promise<Outcome>
   // Runs when a Dump arrives or changes, or an Ingest or Undo ends. Returns the way to stop listening.
   onChange(listener: () => void): () => void
 }

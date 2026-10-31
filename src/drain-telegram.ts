@@ -278,7 +278,7 @@ async function captureImage(
 }
 
 // ponytail: jpeg-js decodes baseline JPEG only. A PNG or progressive JPEG becomes a placeholder; switch to sharp if that shows up.
-function downscaleJpeg(input: Buffer): Buffer {
+export function downscaleJpeg(input: Buffer): Buffer {
   const decoded = decode(input, { useTArray: true, formatAsRGBA: true })
   const width = decoded.width > 1200 ? 1200 : decoded.width
   const height = decoded.width > 1200 ? Math.max(1, Math.round((decoded.height * 1200) / decoded.width)) : decoded.height
@@ -344,7 +344,7 @@ function renderDump(folder: string, message: TelegramMessage, kind: string, body
   )
 }
 
-function writeDump(folder: string, stem: string, contents: string, file?: { name: string; data: Buffer }): void {
+export function writeDump(folder: string, stem: string, contents: string, file?: { name: string; data: Buffer }): void {
   // Written outside inbox/ first, the image or audio before the Dump, so a half-written pair is never committed.
   const dir = path.join(folder, ".state")
   fs.mkdirSync(dir, { recursive: true })
@@ -492,7 +492,7 @@ function savedMessages(folder: string): Known {
 const pad = (n: number) => String(n).padStart(2, "0")
 
 // A Unix time as the file stem ("2026-10-21-140000") and the captured time ("2026-10-21T14:00:00+06:00").
-function localTime(seconds: number): { stem: string; iso: string } {
+export function localTime(seconds: number): { stem: string; iso: string } {
   const d = new Date(seconds * 1000)
   const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
   const time = [d.getHours(), d.getMinutes(), d.getSeconds()].map(pad)
