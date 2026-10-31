@@ -482,7 +482,9 @@ function openCapture(): void {
 
 const captureShortcut = createCaptureShortcut(globalShortcut, process.platform, openCapture)
 
-// The bytes the Owner pasted or dropped as a JPEG no wider than 1200 px, whatever format they were in.
+// The bytes the Owner pasted or dropped as a JPEG, whatever format they were in (a pasted screenshot is a PNG, which
+// quickCapture's baseline-JPEG decoder cannot read). Resized here first so a huge screenshot is never decoded whole;
+// quickCapture then sizes it to 1200 px as it does a Telegram photo.
 function imageToJpeg(bytes: Uint8Array): Buffer | null {
   let image = nativeImage.createFromBuffer(Buffer.from(bytes))
   if (image.isEmpty()) return null
@@ -978,7 +980,8 @@ function start(): void {
   })
 }
 
-// A pasted or dropped image over this is refused before it is decoded.
+// A pasted or dropped image over this is refused before it is decoded. The capture box refuses the same size
+// (renderer/Capture.tsx), so it can say so without a round trip.
 const maxImageBytes = 20 * 1024 * 1024
 
 const oldSecrets = process.argv.find((arg) => arg.startsWith(readOldFlag))

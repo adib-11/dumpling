@@ -1,5 +1,6 @@
 import { useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react"
 
+// The same limit src/main.ts holds.
 const maxImageBytes = 20 * 1024 * 1024
 
 type Attached = { name: string; bytes: Uint8Array }
