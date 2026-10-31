@@ -99,8 +99,15 @@ export async function pollTelegram(
   }
   if (offset === undefined) return
   await bot("getUpdates", { offset, timeout: 0 }).catch((error: unknown) => {
-    console.error("drain-telegram: could not confirm the last batch", error)
+    console.error(`drain-telegram: could not confirm the last batch: ${oneLine(error)}`)
   })
+}
+
+// The error text can carry Telegram's reply, so line breaks are taken out before it is logged: a reply can then
+// never start a log line of its own.
+function oneLine(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error)
+  return text.replace(/[\r\n\u2028\u2029]+/g, " ")
 }
 
 // Telegram drops an update after 24 h. After 12 h a failed voice note or photo is saved as a placeholder instead, so the file id is not lost.
