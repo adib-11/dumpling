@@ -1,11 +1,13 @@
 import fs from "node:fs"
 import { isProvider, type Engine } from "./engine"
+import { defaultShortcut, isAccelerator } from "./shortcut"
 
 type Config = {
   brainFolder?: unknown
   telegramChat?: unknown
   engine?: unknown
   openAtLogin?: unknown
+  captureShortcut?: unknown
 }
 
 export type EngineChoice = Engine["name"]
@@ -45,6 +47,16 @@ export function readOpenAtLogin(configPath: string): boolean {
 
 export function writeOpenAtLogin(configPath: string, openAtLogin: boolean): void {
   writeConfig(configPath, { ...readConfig(configPath), openAtLogin })
+}
+
+// The accelerator that opens the capture box: the default until Settings changes it.
+export function readCaptureShortcut(configPath: string): string {
+  const { captureShortcut } = readConfig(configPath)
+  return typeof captureShortcut === "string" && isAccelerator(captureShortcut) ? captureShortcut : defaultShortcut
+}
+
+export function writeCaptureShortcut(configPath: string, captureShortcut: string): void {
+  writeConfig(configPath, { ...readConfig(configPath), captureShortcut })
 }
 
 function readConfig(configPath: string): Config {
