@@ -1,6 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
-import { readDump } from "./dump"
+import { readDump, type DumpFile } from "./dump"
 
 // What the Today tab shows (spec §5), read from the folder: the Dump files, `vault/wiki/log.md`,
 // `open-threads.md`, `vault/telegram-questions.md` and `.state/runs.tsv`. Nothing is cached, so it is
@@ -74,12 +74,10 @@ export function readToday(brain: string, now: Date): TodayView {
   }
 }
 
-type Located = { name: string; fields: Record<string, string>; text: string; captured: Date | null }
-
 // ponytail: opens every Dump named from `since` on, and lists every filed Dump's folder; index them if
 // vault/raw/ grows past tens of thousands.
-function scanDumps(brain: string, since: string): Located[] {
-  const found: Located[] = []
+function scanDumps(brain: string, since: string): DumpFile[] {
+  const found: DumpFile[] = []
   for (const dir of [path.join(brain, "inbox"), path.join(brain, "inbox", "failed"), path.join(brain, "vault", "raw")]) {
     if (!fs.existsSync(dir)) continue
     for (const entry of fs.readdirSync(dir, { recursive: true, encoding: "utf8" })) {
@@ -87,15 +85,10 @@ function scanDumps(brain: string, since: string): Located[] {
       // inbox/ is read without descending, since inbox/failed/ is its own root.
       if (!entry.endsWith(".md") || entry.endsWith(".fetched.md") || name < since) continue
       if (dir.endsWith("inbox") && entry !== path.basename(entry)) continue
-      found.push(read(path.join(dir, entry)))
+      found.push(readDump(path.join(dir, entry)))
     }
   }
   return found
-}
-
-function read(file: string): Located {
-  const dump = readDump(file)
-  return { name: dump.name, fields: dump.fields, text: dump.text, captured: dump.captured }
 }
 
 function line(name: string, fields: Record<string, string>, text = ""): TodayDump {
@@ -114,14 +107,14 @@ function preview(text: string): string {
 }
 
 // A filed or waiting Dump by name: in the Inbox, given up on, or filed under vault/raw/YYYY/MM/.
-function findDump(brain: string, name: string): Located | undefined {
+function findDump(brain: string, name: string): DumpFile | undefined {
   const candidates = [
     path.join(brain, "inbox", `${name}.md`),
     path.join(brain, "inbox", "failed", `${name}.md`),
     path.join(brain, "vault", "raw", name.slice(0, 4), name.slice(5, 7), `${name}.md`),
   ]
   const file = candidates.find((each) => fs.existsSync(each))
-  return file ? read(file) : undefined
+  return file ? readDump(file) : undefined
 }
 
 function describe(brain: string, name: string): TodayDump {
