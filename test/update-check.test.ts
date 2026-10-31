@@ -42,13 +42,13 @@ test("the update check asks the adib-11/dumpling repo", async () => {
 })
 
 test("the tray shows a new version above Quit", () => {
-  assert.deepEqual(trayMenuItems(null, false, false, null, "0.2.0"), [
-    { label: "Choose folder…", action: "setup", enabled: true },
+  assert.deepEqual(trayMenuItems(null, false, null, "0.2.0"), [
+    { label: "Open Dumpling", action: "open", enabled: true },
     { label: "New version 0.2.0…", action: "update", enabled: true },
     { label: "Report a problem", action: "report", enabled: true },
     { label: "Quit", action: "quit", enabled: true },
   ])
-  assert.deepEqual(trayMenuItems("/home/ada/Dumpling", true, false, null, "0.2.0").slice(-3), [
+  assert.deepEqual(trayMenuItems("/home/ada/Dumpling", false, null, "0.2.0").slice(-3), [
     { label: "New version 0.2.0…", action: "update", enabled: true },
     { label: "Report a problem", action: "report", enabled: true },
     { label: "Quit", action: "quit", enabled: true },

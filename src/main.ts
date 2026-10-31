@@ -31,6 +31,7 @@ import { ytDlpAt } from "./fetch-link"
 import { backupRemote, hideCredentials, setBackupRemote } from "./git-remote"
 import { ingestNow, lastIngestError, lastIngestStatus, spawnOpencode, undoLastIngest, type IngestResult } from "./ingest-now"
 import { enableLinuxAutostart } from "./login-item"
+import { windowState, type Tab, type WindowState } from "./main-window"
 import { problemReportUrl, systemName } from "./report-problem"
 import { claimDailyIngest, readDrain, rememberDrain } from "./schedule"
 import { isSecretName, moveSettings, oldAppName } from "./settings-move"
@@ -39,7 +40,7 @@ import { trayHealth, trayMenuItems, type TrayHealth, type TrayMenuItem } from ".
 import { newerRelease, type NewRelease } from "./update-check"
 
 let tray: Tray | null = null
-let wizard: BrowserWindow | null = null
+let mainWindow: BrowserWindow | null = null
 let askBox: BrowserWindow | null = null
 let connecting: AbortController | null = null
 let polling = false
@@ -47,7 +48,8 @@ let unsaved: string | null = null
 let lastDrained: Date | null = null
 let awakeSince = Date.now()
 let health: TrayHealth = "ok"
-let wizardStep: "remote" | "key" | null = null
+// The tab the main window opens on, taken by the renderer once it has loaded.
+let pendingTab: Tab | null = null
 let backupFailed = false
 let newRelease: NewRelease | null = null
 
@@ -134,7 +136,7 @@ async function moveOldSettings(): Promise<void> {
     }
     const lost = result.lost.map((name) => (name === "telegram-token" ? "bot token" : "key"))
     if (lost.length > 0) {
-      notify(`Moved the settings from Second Brain, but not the ${[...new Set(lost)].join(" or ")}. Add it again in setup.`)
+      notify(`Moved the settings from Second Brain, but not the ${[...new Set(lost)].join(" or ")}. Add it again in the Dumpling window.`)
     }
   } catch (error) {
     console.error("Could not move the settings from Second Brain.", error)
@@ -183,7 +185,7 @@ function opencodeBin(): string {
   return vendorBin("opencode")
 }
 
-// The Owner's one Engine, or null before setup chooses one. An install from before Engines with a key has
+// The Owner's one Engine, or null before first run chooses one. An install from before Engines with a key has
 // the OpenAI Key Engine.
 function currentEngine(): Engine | null {
   const choice = readEngineChoice(configPath())
@@ -201,11 +203,16 @@ function telegramConnected(): boolean {
   return readTelegramChat(configPath()) !== null && loadToken() !== null
 }
 
-function setupStep(): "folder" | "engine" | "bot" | null {
-  if (readBrainFolder(configPath()) === null) return "folder"
-  if (currentEngine() === null) return "engine"
-  if (!telegramConnected()) return "bot"
-  return null
+function currentWindowState(): WindowState {
+  return windowState({
+    folder: readBrainFolder(configPath()),
+    engine: currentEngine() !== null,
+    bot: telegramConnected(),
+  })
+}
+
+function firstRunDone(): boolean {
+  return currentWindowState().step === "today"
 }
 
 function startPolling(): void {
@@ -264,8 +271,8 @@ function notify(body: string, offer?: "add-key"): void {
     ...(offer && { actions: [{ type: "button" as const, text: "Add a key" }] }),
   })
   if (offer) {
-    notice.on("click", () => openWizard("key"))
-    notice.on("action", () => openWizard("key"))
+    notice.on("click", () => openMainWindow("settings"))
+    notice.on("action", () => openMainWindow("settings"))
   }
   notice.show()
 }
@@ -335,22 +342,27 @@ function enableLogin(): void {
   }
 }
 
-function openWizard(step: "remote" | "key" | null = null): void {
-  if (wizard && step !== null) {
-    wizardStep = step
-    wizard.reload()
-  }
-  if (wizard) {
-    wizard.show()
-    wizard.focus()
+// The Dock icon shows while a window is open; the app stays in the menu bar either way. On Windows and Linux
+// each open window has its own taskbar entry.
+function updateDock(): void {
+  if (process.platform !== "darwin") return
+  if (mainWindow || askBox) void app.dock?.show()
+  else app.dock?.hide()
+}
+
+function openMainWindow(tab: Tab | null = null): void {
+  if (mainWindow) {
+    if (tab) mainWindow.webContents.send("window:tab", tab)
+    mainWindow.show()
+    mainWindow.focus()
     return
   }
-  if (process.platform === "darwin") void app.dock?.show()
-  wizardStep = step
-  wizard = new BrowserWindow({
-    width: 520,
-    height: 420,
-    resizable: false,
+  pendingTab = tab
+  mainWindow = new BrowserWindow({
+    width: 900,
+    height: 640,
+    minWidth: 560,
+    minHeight: 420,
     autoHideMenuBar: true,
     title: "Dumpling",
     webPreferences: {
@@ -360,20 +372,21 @@ function openWizard(step: "remote" | "key" | null = null): void {
       sandbox: true,
     },
   })
-  wizard.webContents.setWindowOpenHandler(() => ({ action: "deny" }))
-  wizard.webContents.on("will-navigate", (event) => event.preventDefault())
-  void wizard.loadFile(path.join(__dirname, "wizard.html"))
-  wizard.on("closed", () => {
+  updateDock()
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }))
+  mainWindow.webContents.on("will-navigate", (event) => event.preventDefault())
+  void mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"))
+  mainWindow.on("closed", () => {
     connecting?.abort()
-    wizard = null
-    wizardStep = null
-    if (process.platform === "darwin" && !askBox) app.dock?.hide()
+    mainWindow = null
+    pendingTab = null
+    updateDock()
   })
 }
 
 function openAsk(): void {
-  if (setupStep()) {
-    openWizard()
+  if (!firstRunDone()) {
+    openMainWindow()
     return
   }
   if (askBox) {
@@ -381,7 +394,6 @@ function openAsk(): void {
     askBox.focus()
     return
   }
-  if (process.platform === "darwin") void app.dock?.show()
   askBox = new BrowserWindow({
     width: 560,
     height: 520,
@@ -396,10 +408,11 @@ function openAsk(): void {
   })
   askBox.webContents.setWindowOpenHandler(() => ({ action: "deny" }))
   askBox.webContents.on("will-navigate", (event) => event.preventDefault())
+  updateDock()
   void askBox.loadFile(path.join(__dirname, "ask.html"))
   askBox.on("closed", () => {
     askBox = null
-    if (process.platform === "darwin" && !wizard) app.dock?.hide()
+    updateDock()
   })
 }
 
@@ -410,8 +423,8 @@ function toMenuItem(item: TrayMenuItem): Electron.MenuItemConstructorOptions {
     click:
       item.action === "quit"
         ? () => app.quit()
-        : item.action === "setup"
-          ? () => openWizard()
+        : item.action === "open"
+          ? () => openMainWindow()
           : item.action === "ingest"
             ? () => {
                 void runIngest(true)
@@ -421,7 +434,7 @@ function toMenuItem(item: TrayMenuItem): Electron.MenuItemConstructorOptions {
                   void undoFromTray()
                 }
               : item.action === "remote"
-                ? () => openWizard("remote")
+                ? () => openMainWindow("settings")
                 : item.action === "ask"
                   ? () => openAsk()
                   : item.action === "update"
@@ -437,7 +450,7 @@ function toMenuItem(item: TrayMenuItem): Electron.MenuItemConstructorOptions {
 function rebuildMenu(): void {
   if (!tray) return
   const folder = readBrainFolder(configPath())
-  const items = trayMenuItems(folder, telegramConnected(), backupFailed, unsaved, newRelease?.version ?? null)
+  const items = trayMenuItems(folder, backupFailed, unsaved, newRelease?.version ?? null)
   tray.setContextMenu(Menu.buildFromTemplate(items.map(toMenuItem)))
   tray.setToolTip(trayTip())
 }
@@ -463,12 +476,12 @@ function createTray(): void {
 async function runIngest(fromTray: boolean): Promise<void> {
   const folder = readBrainFolder(configPath())
   if (!folder) {
-    if (fromTray) openWizard()
+    if (fromTray) openMainWindow()
     return
   }
   const engine = currentEngine()
   if (!engine) {
-    if (fromTray) openWizard()
+    if (fromTray) openMainWindow()
     return
   }
   const bin = opencodeBin()
@@ -564,9 +577,7 @@ function start(): void {
     return
   }
 
-  app.on("second-instance", () => {
-    if (setupStep()) openWizard()
-  })
+  app.on("second-instance", () => openMainWindow())
 
   app.on("window-all-closed", () => {
     // The tray keeps the process alive.
@@ -577,7 +588,15 @@ function start(): void {
     tray = null
   })
 
-  ipcMain.handle("wizard:start", () => wizardStep ?? setupStep() ?? "bot")
+  ipcMain.handle("window:state", () => currentWindowState())
+
+  ipcMain.handle("window:engine", () => currentEngine()?.name ?? null)
+
+  ipcMain.handle("window:ready", () => {
+    const tab = pendingTab
+    pendingTab = null
+    return tab
+  })
 
   ipcMain.handle("ask:question", async (_event, question: unknown) => {
     if (typeof question !== "string" || question.trim() === "") {
@@ -592,12 +611,12 @@ function start(): void {
       : { ok: false as const, error: result.reason }
   })
 
-  ipcMain.handle("wizard:backup-remote", async () => {
+  ipcMain.handle("window:backup-remote", async () => {
     const folder = readBrainFolder(configPath())
     return folder !== null && (await backupRemote(folder)) !== null
   })
 
-  ipcMain.handle("wizard:save-remote", async (_event, url: unknown) => {
+  ipcMain.handle("window:save-remote", async (_event, url: unknown) => {
     const folder = readBrainFolder(configPath())
     if (!folder) return { ok: false as const, error: "Choose a folder first." }
     if (typeof url !== "string") return { ok: false as const, error: "Paste a git remote URL." }
@@ -605,20 +624,19 @@ function start(): void {
       await setBackupRemote(folder, url)
       backupFailed = false
       rebuildMenu()
-      wizard?.close()
       return { ok: true as const }
     } catch (error) {
       return { ok: false as const, error: hideCredentials(errorMessage(error, "Could not set the remote.")) }
     }
   })
 
-  ipcMain.handle("wizard:providers", () => offeredProviders())
+  ipcMain.handle("window:providers", () => offeredProviders())
 
-  ipcMain.handle("wizard:open-key-page", (_event, provider: unknown) => {
+  ipcMain.handle("window:open-key-page", (_event, provider: unknown) => {
     if (isProvider(provider)) return shell.openExternal(keyProviders[provider].keysUrl)
   })
 
-  ipcMain.handle("wizard:save-key", async (_event, chosen: unknown, key: unknown) => {
+  ipcMain.handle("window:save-key", async (_event, chosen: unknown, key: unknown) => {
     // The renderer's value only picks an entry; the id used for the key file comes from the app's own list.
     const provider = offeredProviders().find((offered) => offered.id === chosen)?.id
     if (!provider) return { ok: false as const, error: "Choose a provider." }
@@ -628,20 +646,18 @@ function start(): void {
     }
     const result = await acceptApiKey(provider, key, keyFile(provider), safeStorage, fetch)
     if (result.ok) writeEngineChoice(configPath(), provider)
-    if (result.ok && telegramConnected()) wizard?.close()
     return result
   })
 
-  ipcMain.handle("wizard:start-free", () => {
+  ipcMain.handle("window:start-free", () => {
     writeEngineChoice(configPath(), "free")
-    if (telegramConnected()) wizard?.close()
   })
 
-  ipcMain.handle("wizard:default-folder", () =>
+  ipcMain.handle("window:default-folder", () =>
     defaultSecondBrainFolder(app.getPath("home"), app.getPath("documents")),
   )
 
-  ipcMain.handle("wizard:pick-folder", async () => {
+  ipcMain.handle("window:pick-folder", async () => {
     const current = readBrainFolder(configPath())
     const result = await dialog.showOpenDialog({
       title: "Choose a folder for the second brain",
@@ -653,7 +669,7 @@ function start(): void {
     return result.filePaths[0]
   })
 
-  ipcMain.handle("wizard:create", async (_event, folder: unknown) => {
+  ipcMain.handle("window:create", async (_event, folder: unknown) => {
     if (typeof folder !== "string" || folder.trim() === "") {
       return { ok: false as const, error: "Choose a folder." }
     }
@@ -668,9 +684,9 @@ function start(): void {
     }
   })
 
-  ipcMain.handle("wizard:open-botfather", () => shell.openExternal("https://t.me/BotFather"))
+  ipcMain.handle("window:open-botfather", () => shell.openExternal("https://t.me/BotFather"))
 
-  ipcMain.handle("wizard:check-token", async (_event, pasted: unknown) => {
+  ipcMain.handle("window:check-token", async (_event, pasted: unknown) => {
     try {
       if (typeof pasted !== "string") throw new Error("Paste the bot token.")
       const token = pasted.trim()
@@ -682,7 +698,7 @@ function start(): void {
     }
   })
 
-  ipcMain.handle("wizard:wait-start", async () => {
+  ipcMain.handle("window:wait-start", async () => {
     const token = loadToken()
     if (!token) return { ok: false as const, error: "Check the bot token first." }
     connecting?.abort()
@@ -692,7 +708,6 @@ function start(): void {
       writeTelegramChat(configPath(), chat)
       rebuildMenu()
       startPolling()
-      wizard?.close()
       return { ok: true as const }
     } catch (error) {
       return { ok: false as const, error: errorMessage(error, "Could not reach the bot.") }
@@ -705,7 +720,7 @@ function start(): void {
     if (process.platform === "darwin") app.dock?.hide()
     createTray()
     startPolling()
-    if (setupStep()) openWizard()
+    if (!firstRunDone()) openMainWindow()
     powerMonitor.on("resume", () => {
       awakeSince = Date.now()
     })

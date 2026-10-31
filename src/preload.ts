@@ -1,28 +1,33 @@
 import { contextBridge, ipcRenderer } from "electron"
-import type { KeyResult } from "./api-key"
+import type { DumplingApi, Tab } from "./main-window"
 
-export type { KeyResult }
-export type WizardResult = { ok: true; commit: string } | { ok: false; error: string }
-export type TokenResult = { ok: true; username: string } | { ok: false; error: string }
-export type ConnectResult = { ok: true } | { ok: false; error: string }
 export type AskReply = { ok: true; answer: string } | { ok: false; error: string }
 
 contextBridge.exposeInMainWorld("ask", {
   question: (question: string): Promise<AskReply> => ipcRenderer.invoke("ask:question", question),
 })
 
-contextBridge.exposeInMainWorld("wizard", {
-  start: (): Promise<"folder" | "engine" | "key" | "bot" | "remote"> => ipcRenderer.invoke("wizard:start"),
-  defaultFolder: (): Promise<string> => ipcRenderer.invoke("wizard:default-folder"),
-  pickFolder: (): Promise<string | null> => ipcRenderer.invoke("wizard:pick-folder"),
-  create: (folder: string): Promise<WizardResult> => ipcRenderer.invoke("wizard:create", folder),
-  providers: (): Promise<{ id: string; label: string; model: string; audio: boolean }[]> => ipcRenderer.invoke("wizard:providers"),
-  saveKey: (provider: string, key: string): Promise<KeyResult> => ipcRenderer.invoke("wizard:save-key", provider, key),
-  startFree: (): Promise<void> => ipcRenderer.invoke("wizard:start-free"),
-  openKeyPage: (provider: string): Promise<void> => ipcRenderer.invoke("wizard:open-key-page", provider),
-  openBotFather: (): Promise<void> => ipcRenderer.invoke("wizard:open-botfather"),
-  checkToken: (token: string): Promise<TokenResult> => ipcRenderer.invoke("wizard:check-token", token),
-  waitStart: (): Promise<ConnectResult> => ipcRenderer.invoke("wizard:wait-start"),
-  backupRemote: (): Promise<boolean> => ipcRenderer.invoke("wizard:backup-remote"),
-  saveRemote: (url: string): Promise<{ ok: true } | { ok: false; error: string }> => ipcRenderer.invoke("wizard:save-remote", url),
-})
+const dumpling: DumplingApi = {
+  state: () => ipcRenderer.invoke("window:state"),
+  engine: () => ipcRenderer.invoke("window:engine"),
+  onTab: (show) => {
+    ipcRenderer.on("window:tab", (_event, tab: Tab) => show(tab))
+    void ipcRenderer.invoke("window:ready").then((tab: Tab | null) => {
+      if (tab) show(tab)
+    })
+  },
+  defaultFolder: () => ipcRenderer.invoke("window:default-folder"),
+  pickFolder: () => ipcRenderer.invoke("window:pick-folder"),
+  create: (folder) => ipcRenderer.invoke("window:create", folder),
+  providers: () => ipcRenderer.invoke("window:providers"),
+  startFree: () => ipcRenderer.invoke("window:start-free"),
+  saveKey: (provider, key) => ipcRenderer.invoke("window:save-key", provider, key),
+  openKeyPage: (provider) => ipcRenderer.invoke("window:open-key-page", provider),
+  openBotFather: () => ipcRenderer.invoke("window:open-botfather"),
+  checkToken: (token) => ipcRenderer.invoke("window:check-token", token),
+  waitStart: () => ipcRenderer.invoke("window:wait-start"),
+  backupRemote: () => ipcRenderer.invoke("window:backup-remote"),
+  saveRemote: (url) => ipcRenderer.invoke("window:save-remote", url),
+}
+
+contextBridge.exposeInMainWorld("dumpling", dumpling)

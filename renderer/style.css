@@ -1,0 +1,125 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+  line-height: 1.4;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  padding: 24px;
+  max-width: 640px;
+}
+
+h1 {
+  font-size: 1.15rem;
+  font-weight: 650;
+  margin: 0 0 12px;
+}
+
+h2 {
+  font-size: 1rem;
+  font-weight: 650;
+  margin: 0 0 8px;
+}
+
+p {
+  margin: 0 0 16px;
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+}
+
+input[type="text"],
+input[type="password"] {
+  flex: 1;
+  font: inherit;
+  padding: 6px 8px;
+}
+
+button {
+  font: inherit;
+  padding: 6px 12px;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+fieldset {
+  border: 0;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.choice {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+
+.choice input {
+  margin: 0;
+}
+
+.choice-note {
+  margin-left: 24px;
+}
+
+[role="alert"] {
+  color: #9f2d1e;
+  min-height: 1.4em;
+  margin: 12px 0 0;
+}
+
+[role="alert"]:empty {
+  margin: 0;
+}
+
+[role="tablist"] {
+  display: flex;
+  gap: 4px;
+  padding: 8px 16px 0;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+}
+
+[role="tab"] {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: inherit;
+  padding: 8px 12px;
+}
+
+[role="tab"][aria-selected="true"] {
+  border-bottom-color: currentColor;
+  font-weight: 650;
+}
+
+section + section {
+  margin-top: 32px;
+}
+
+.card {
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 24px;
+}
+
+.empty {
+  opacity: 0.7;
+}
